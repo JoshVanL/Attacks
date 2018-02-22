@@ -1,6 +1,7 @@
 package main
 
 import (
+	"big"
 	"bufio"
 	"exec"
 	"fmt"
@@ -16,10 +17,12 @@ type Attack struct {
 	cmd *exec.Cmd
 
 	attackFile string
-	confFile   string
+	conf       *Conf
 }
 
 type Conf struct {
+	n      int
+	values []*big.Int
 	fields []string
 }
 
@@ -40,16 +43,7 @@ func parseArguments() ([]string, os.Error) {
 	return os.Args[1:], nil
 }
 
-func NewAttack() (attack *Attack, err os.Error) {
-	_, err = parseArguments()
-	if err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-func append(slice []string, elem string) []string {
+func appendString(slice []string, elem string) []string {
 	if len(slice) < cap(slice) {
 		slice = slice[0 : len(slice)+1]
 		slice[len(slice)-1] = elem
@@ -68,34 +62,64 @@ func readConf(filename string) (conf *Conf, err os.Error) {
 		return nil, newError(fmt.Sprintf("failed to read conf file: %v", err))
 	}
 
-	var fields []string
+	conf = &Conf{
+		n:      0,
+		values: make([]*big.Int, 5),
+		fields: make([]string, 5),
+	}
+
 	reader := bufio.NewReader(f)
 	for {
-		b, err := reader.ReadSlice(byte(newline))
+		b, err := reader.ReadBytes(byte(newline))
 		if err != nil {
 			break
 		}
 
-		fields = append(fields, string(b))
+		// Get rid of trailing newline (10)
+		d := make([]byte, len(b)-1)
+		copy(d, b)
+
+		conf.fields[conf.n] = string(d)
+
+		conf.values[conf.n] = new(big.Int)
+		_, ok := conf.values[conf.n].SetString(string(d), 16)
+		if !ok {
+			return nil, newError("error when converting conf values to hex")
+		}
+
+		//fmt.Printf("%s\n", conf.values[conf.n].String())
+		//fmt.Printf("%s\n", conf.fields[conf.n])
+
+		conf.n++
 	}
 
-	return &Conf{fields}, nil
+	return conf, nil
+}
+
+func NewAttack() (attack *Attack, err os.Error) {
+	args, err := parseArguments()
+	if err != nil {
+		return nil, err
+	}
+
+	var conf *Conf
+	if len(args) > 1 {
+		conf, err = readConf(args[1])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &Attack{attackFile: args[0], conf: conf}, nil
 }
 
 func main() {
-	args, err := parseArguments()
+	attack, err := NewAttack()
 	if err != nil {
 		fatal(err)
 	}
 
-	conf, err := readConf(args[1])
-	if err != nil {
-		fatal(err)
-	}
-
-	for _, field := range conf.fields {
-		fmt.Printf("%s", field)
-	}
+	fmt.Printf("%v\n", attack)
 
 	//cmd, err := exec.Run("/bin/echo", []string{"echo", "hello"}, nil, exec.Pipe, exec.Pipe, exec.Pipe)
 	//cmd, err := exec.Run("./oaep/23305.D", []string{"23305.D"}, nil, exec.Pipe, exec.Pipe, exec.Pipe)
