@@ -7,11 +7,19 @@ import (
 	"fmt"
 	"os"
 	"syscall"
-	"time"
 )
 
 const (
 	newline = 10
+
+	SUCCESS      = 0
+	ERROR1       = 1
+	ERROR2       = 2
+	P_OUTOFRANGE = 3
+	C_OUTOFRANGE = 4
+	M_LENGTH     = 5
+	C_LENGTH     = 6
+	CH_LENGTH    = 7
 )
 
 type Attack struct {
@@ -20,7 +28,9 @@ type Attack struct {
 	attackFile string
 	conf       *Conf
 
-	block chan int
+	block        chan int
+	interactions int
+	stopCh       chan interface{}
 }
 
 type Conf struct {
@@ -37,6 +47,33 @@ func newError(err string) os.Error {
 func fatal(err os.Error) {
 	fmt.Printf("%v\n", err.String())
 	os.Exit(1)
+}
+
+func printResponse(e int) {
+	var str string
+
+	switch e {
+	case SUCCESS:
+		str = "SUCCESS(0)"
+	case ERROR1:
+		str = "ERROR1(1)"
+	case ERROR2:
+		str = "ERROR2(2)"
+	case P_OUTOFRANGE:
+		str = "P_OUTOFRANGE(3)"
+	case C_OUTOFRANGE:
+		str = "C_OUTOFRANGE(4)"
+	case M_LENGTH:
+		str = "M_LENGTH(5)"
+	case C_LENGTH:
+		str = "C_LENGTH(6)"
+	case CH_LENGTH:
+		str = "CH_LENGTH(7)"
+	default:
+		str = fmt.Sprintf("OTHER(%d)", e)
+	}
+
+	fmt.Printf("Response: %s\n", str)
 }
 
 func parseArguments() ([]string, os.Error) {
@@ -119,7 +156,8 @@ func NewAttack() (attack *Attack, err os.Error) {
 	return &Attack{
 		attackFile: args[0],
 		conf:       conf,
-		block:      make(chan int, 1),
+		block:      make(chan int),
+		stopCh:     make(chan interface{}),
 	}, nil
 }
 
@@ -143,37 +181,51 @@ func (a *Attack) WriteStdin() {
 			fmt.Printf("failed to write stdin file: %v\n", err)
 		}
 		fmt.Printf("(%d)wrote:%s", n, string(buff))
-		time.Sleep(100000000)
 
 		b = !b
 		if b {
 			a.block <- 0
+			a.interactions++
 		}
 	}
+
+	close(a.stopCh)
 }
 
 func (a *Attack) ReadStdout() {
 	for {
-		buff := make([]byte, 1024)
+		select {
+		case <-a.stopCh:
+			return
 
-		<-a.block
-		n, err := a.cmd.Stdout.Read(buff)
-		if err != nil {
-			fmt.Printf("failed to read stdout file: %v\n", err)
+		default:
+			buff := make([]byte, 1024)
+
+			<-a.block
+			_, err := a.cmd.Stdout.Read(buff)
+			if err != nil {
+				fmt.Printf("failed to read stdout file: %v\n", err)
+			}
+			printResponse(int(buff[0]) - 48)
 		}
-		fmt.Printf("(%d)read:%s", n, string(buff))
 	}
 }
 
 func (a *Attack) ReadStderr() {
 	for {
-		buff := make([]byte, 1024)
-		n, err := a.cmd.Stderr.Read(buff)
-		if err != nil {
-			fmt.Printf("failed to read stderr file: %v\n", err)
-		}
-		if n > 0 {
-			fmt.Printf("Stderr: %v\n", buff[0:n])
+		select {
+		case <-a.stopCh:
+			return
+
+		default:
+			buff := make([]byte, 1024)
+			n, err := a.cmd.Stderr.Read(buff)
+			if err != nil {
+				fmt.Printf("failed to read stderr file: %v\n", err)
+			}
+			if n > 0 {
+				fmt.Printf("Stderr: %v\n", buff[0])
+			}
 		}
 	}
 }
@@ -188,8 +240,6 @@ func (a *Attack) Run() os.Error {
 		return newError(fmt.Sprintf("error running command: %v", err))
 	}
 	a.cmd = cmd
-
-	time.Sleep(100000000)
 
 	fmt.Printf("Begining attack...\n")
 
@@ -209,12 +259,14 @@ func (a *Attack) Run() os.Error {
 	//fmt.Printf("%v\n", cmd.Stdout)
 	//fmt.Printf("%v\n", cmd.Stderr)
 
-	wait, err := cmd.Wait(0)
-	if err != nil {
-		return newError(fmt.Sprintf("error waiting for command: %v", err))
-	}
+	//wait, err := cmd.Wait(0)
+	//if err != nil {
+	//	return newError(fmt.Sprintf("error waiting for command: %v", err))
+	//}
 
-	fmt.Printf("Command complete: %v\n", wait)
+	<-a.stopCh
+	fmt.Printf("Attack complete.\n")
+	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
