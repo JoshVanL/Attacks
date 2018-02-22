@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+
+	"./oaep"
 )
 
 const (
@@ -272,6 +274,8 @@ func (a *Attack) Run() os.Error {
 }
 
 func main() {
+	oaep.Foo()
+
 	fmt.Printf("Initalising attack...\n")
 	attack, err := NewAttack()
 	if err != nil {
