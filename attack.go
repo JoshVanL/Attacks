@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 )
 
 const (
@@ -18,12 +19,15 @@ type Attack struct {
 
 	attackFile string
 	conf       *Conf
+
+	block chan int
 }
 
 type Conf struct {
 	n      int
 	values []*big.Int
 	fields []string
+	bytes  [][]byte
 }
 
 func newError(err string) os.Error {
@@ -66,6 +70,7 @@ func readConf(filename string) (conf *Conf, err os.Error) {
 		n:      0,
 		values: make([]*big.Int, 5),
 		fields: make([]string, 5),
+		bytes:  make([][]byte, 5),
 	}
 
 	reader := bufio.NewReader(f)
@@ -75,11 +80,12 @@ func readConf(filename string) (conf *Conf, err os.Error) {
 			break
 		}
 
+		conf.bytes[conf.n] = b
+		conf.fields[conf.n] = string(b)
+
 		// Get rid of trailing newline (10)
 		d := make([]byte, len(b)-1)
 		copy(d, b)
-
-		conf.fields[conf.n] = string(d)
 
 		conf.values[conf.n] = new(big.Int)
 		_, ok := conf.values[conf.n].SetString(string(d), 16)
@@ -110,73 +116,117 @@ func NewAttack() (attack *Attack, err os.Error) {
 		}
 	}
 
-	return &Attack{attackFile: args[0], conf: conf}, nil
+	return &Attack{
+		attackFile: args[0],
+		conf:       conf,
+		block:      make(chan int, 1),
+	}, nil
 }
 
-func main() {
-	attack, err := NewAttack()
-	if err != nil {
-		fatal(err)
+func (a *Attack) WriteStdin() {
+	b := true
+	var buff []byte
+
+	for i := 0; i < 1000; i++ {
+		if b {
+			buff = a.conf.bytes[2]
+		} else {
+			buff = a.conf.bytes[3]
+			//tmp := make([]byte, len(a.conf.bytes[3])+1)
+			//tmp = a.conf.bytes[3]
+			//tmp[len(tmp)] = 0
+			//a.conf.bytes[3] = tmp
+		}
+
+		n, err := a.cmd.Stdin.Write(buff)
+		if err != nil {
+			fmt.Printf("failed to write stdin file: %v\n", err)
+		}
+		fmt.Printf("(%d)wrote:%s", n, string(buff))
+		time.Sleep(100000000)
+
+		b = !b
+		if b {
+			a.block <- 0
+		}
+	}
+}
+
+func (a *Attack) ReadStdout() {
+	for {
+		buff := make([]byte, 1024)
+
+		<-a.block
+		n, err := a.cmd.Stdout.Read(buff)
+		if err != nil {
+			fmt.Printf("failed to read stdout file: %v\n", err)
+		}
+		fmt.Printf("(%d)read:%s", n, string(buff))
+	}
+}
+
+func (a *Attack) ReadStderr() {
+	for {
+		buff := make([]byte, 1024)
+		n, err := a.cmd.Stderr.Read(buff)
+		if err != nil {
+			fmt.Printf("failed to read stderr file: %v\n", err)
+		}
+		if n > 0 {
+			fmt.Printf("Stderr: %v\n", buff[0:n])
+		}
+	}
+}
+
+func (a *Attack) Run() os.Error {
+	if _, err := exec.LookPath(a.attackFile); err != nil {
+		return newError(fmt.Sprintf("error looking up binary file '%s': %v", a.attackFile, err))
 	}
 
-	fmt.Printf("%v\n", attack)
+	cmd, err := exec.Run(a.attackFile, []string{}, nil, exec.Pipe, exec.Pipe, exec.Pipe)
+	if err != nil {
+		return newError(fmt.Sprintf("error running command: %v", err))
+	}
+	a.cmd = cmd
 
-	//cmd, err := exec.Run("/bin/echo", []string{"echo", "hello"}, nil, exec.Pipe, exec.Pipe, exec.Pipe)
-	//cmd, err := exec.Run("./oaep/23305.D", []string{"23305.D"}, nil, exec.Pipe, exec.Pipe, exec.Pipe)
-	//if err != nil {
-	//	fmt.Printf("error running command: %v", err)
-	//}
+	time.Sleep(100000000)
 
-	//fmt.Printf("here\n")
+	fmt.Printf("Begining attack...\n")
 
-	//go func() {
-	//	for i := 0; i < 100000; i++ {
-	//		buff := []byte{0, 0, 1}
-	//		_, err = cmd.Stdin.Write(buff)
-	//		if err != nil {
-	//			//fmt.Printf("failed to write stdin file: %v\n", err)
-	//		}
-	//	}
-	//}()
+	//fmt.Printf("%d\n", len(a.conf.bytes[0]))
+	//fmt.Printf("%d\n", len(a.conf.bytes[3]))
+	//fmt.Printf("%v\n", a.conf.bytes[0])
+	//fmt.Printf("%v\n", a.conf.bytes[3])
 
-	////fmt.Printf("HERE")
+	go a.WriteStdin()
 
-	//go func() {
-	//	for {
-	//		buff := make([]byte, 1024)
-	//		n, err := cmd.Stdout.Read(buff)
-	//		if err != nil {
-	//			//fmt.Printf("failed to write stdin file: %v\n", err)
-	//		}
-	//		if n > 0 {
-	//			fmt.Printf("%s\n", string(buff[0]))
-	//		}
-	//	}
-	//}()
+	go a.ReadStdout()
 
-	//go func() {
-	//	for {
-	//		buff := make([]byte, 1024)
-	//		n, err := cmd.Stderr.Read(buff)
-	//		if err != nil {
-	//			//fmt.Printf("failed to write stdin file: %v\n", err)
-	//		}
-	//		if n > 0 {
-	//			fmt.Printf("here2: %v\n", buff[0])
-	//		}
-	//	}
-	//}()
+	go a.ReadStderr()
 
 	//fmt.Printf("%v\n", cmd.Pid)
 	//fmt.Printf("%v\n", cmd.Stdin)
 	//fmt.Printf("%v\n", cmd.Stdout)
 	//fmt.Printf("%v\n", cmd.Stderr)
 
-	//wait, err := cmd.Wait(0)
-	//if err != nil {
-	//	fmt.Printf("error waiting for command: %v", err)
-	//}
+	wait, err := cmd.Wait(0)
+	if err != nil {
+		return newError(fmt.Sprintf("error waiting for command: %v", err))
+	}
 
-	//fmt.Printf("Command complete\n")
-	//fmt.Printf("%v\n", wait)
+	fmt.Printf("Command complete: %v\n", wait)
+
+	return nil
+}
+
+func main() {
+	fmt.Printf("Initalising attack...\n")
+	attack, err := NewAttack()
+	if err != nil {
+		fatal(err)
+	}
+
+	if err := attack.Run(); err != nil {
+		fatal(err)
+	}
 }
