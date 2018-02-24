@@ -221,11 +221,12 @@ func (a *Attack) Run() os.Error {
 
 	fmt.Printf("Begining attack...\n")
 
-	fmt.Printf("Finding f1...\n")
+	fmt.Printf("Finding f1...")
 	_, err = a.findF1()
 	if err != nil {
 		utils.Fatal(err)
 	}
+	fmt.Printf("done.\n")
 
 	//fmt.Printf("%d\n", len(a.conf.bytes[0]))
 	//fmt.Printf("%d\n", len(a.conf.bytes[3]))

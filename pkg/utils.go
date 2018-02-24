@@ -92,8 +92,7 @@ func IntToHexBytes(z *big.Int) []byte {
 	one := big.NewInt(1)
 	index := big.NewInt(int64(z.Len() - 1))
 
-	bytes[0] = '\n'
-	loc := 1
+	loc := 0
 
 	for num.Cmp(one) > 0 {
 		power.Exp(hex, index, nil)
@@ -110,7 +109,9 @@ func IntToHexBytes(z *big.Int) []byte {
 		loc++
 	}
 
-	return TrimLeftBytes(bytes, '0')
+	bytes[loc] = '\n'
+
+	return TrimLeftBytes(bytes, 0)
 }
 
 func zToHex(z *big.Int) string {
@@ -152,11 +153,18 @@ func TrimLeft(str string, b byte) string {
 }
 
 func TrimLeftBytes(bytes []byte, b byte) []byte {
-	i := 0
+	s, e := 0, len(bytes)-1
 
-	for bytes[i] == b {
-		i++
+	for bytes[s] == 48 {
+		s++
 	}
 
-	return bytes[i:]
+	for bytes[e] == 0 {
+		e--
+	}
+
+	a := make([]byte, e-s+1)
+	copy(a, bytes[s:e+5])
+
+	return a
 }
