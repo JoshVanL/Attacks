@@ -88,11 +88,14 @@ func (a *Attack) Write(l, c []byte) os.Error {
 		return utils.Error("failed to write ciphertext to Stdin", err)
 	}
 
+	//fmt.Printf("%s\n", string(l))
+	//fmt.Printf("%s\n", string(c))
+
 	return nil
 }
 
 func (a *Attack) Read() ([]byte, os.Error) {
-	b := make([]byte, 1024)
+	b := make([]byte, 10)
 
 	if _, err := a.cmd.Stdout.Read(b); err != nil {
 		return nil, utils.Error("failed to read stdout file", err)
@@ -102,9 +105,14 @@ func (a *Attack) Read() ([]byte, os.Error) {
 }
 
 func (a *Attack) Interact(c *big.Int) (res int, err os.Error) {
-	m := []byte(utils.IntToHexBytes(c))
+	m := []byte(utils.IntToOctBytes(c))
+	m = utils.PadBytes(m, 256)
+	//fmt.Printf("\n%s\n", string(m))
+	//os.Exit(1)
 
-	if err := a.Write(a.conf.Bytes[2], m); err != nil {
+	l := utils.PadBytes(a.conf.Bytes[2], 256)
+
+	if err := a.Write(l, m); err != nil {
 		return -1, err
 	}
 
@@ -127,7 +135,7 @@ func (a *Attack) findF1() (*big.Int, os.Error) {
 		return nil, err
 	}
 
-	for code == C_LENGTH {
+	for code != C_LENGTH {
 		f1.Mul(f1, two)
 		m = a.conf.RSAf(f1)
 		code, err = a.Interact(m)
@@ -139,74 +147,113 @@ func (a *Attack) findF1() (*big.Int, os.Error) {
 	return f1, nil
 }
 
-//func (a *Attack) WriteStdin() {
-//	b := true
-//	var buff []byte
-//
-//	for i := 0; i < 1000; i++ {
-//		if b {
-//			buff = a.conf.bytes[2]
-//		} else {
-//			buff = a.conf.bytes[3]
-//			//tmp := make([]byte, len(a.conf.bytes[3])+1)
-//			//tmp = a.conf.bytes[3]
-//			//tmp[len(tmp)] = 0
-//			//a.conf.bytes[3] = tmp
-//		}
-//
-//		n, err := a.cmd.Stdin.Write(buff)
-//		if err != nil {
-//			fmt.Printf("failed to write stdin file: %v\n", err)
-//		}
-//		fmt.Printf("(%d)wrote:%s", n, string(buff))
-//
-//		b = !b
-//		if b {
-//			a.block <- 0
-//			a.interactions++
-//		}
-//	}
-//
-//	close(a.stopCh)
-//}
-//
-//func (a *Attack) ReadStdout() {
-//	for {
-//		select {
-//		case <-a.stopCh:
-//			return
-//
-//		default:
-//			buff := make([]byte, 1024)
-//
-//			<-a.block
-//			_, err := a.cmd.Stdout.Read(buff)
-//			if err != nil {
-//				fmt.Printf("failed to read stdout file: %v\n", err)
-//			}
-//			printResponse(int(buff[0]) - 48)
-//		}
-//	}
-//}
-//
-//func (a *Attack) ReadStderr() {
-//	for {
-//		select {
-//		case <-a.stopCh:
-//			return
-//
-//		default:
-//			buff := make([]byte, 1024)
-//			n, err := a.cmd.Stderr.Read(buff)
-//			if err != nil {
-//				fmt.Printf("failed to read stderr file: %v\n", err)
-//			}
-//			if n > 0 {
-//				fmt.Printf("Stderr: %v\n", buff[0])
-//			}
-//		}
-//	}
-//}
+func (a *Attack) findF2(f1 *big.Int) (*big.Int, os.Error) {
+	f1_half := new(big.Int)
+	f2 := new(big.Int)
+	f1_half, _ = f1_half.Div(f1, big.NewInt(2))
+
+	f2.Add(a.conf.N, a.conf.B)
+	f2, _ = f2.Div(f2, a.conf.B)
+	f2.Mul(f2, f1_half)
+
+	m := a.conf.RSAf(f2)
+	code, err := a.Interact(m)
+	if err != nil {
+		return nil, err
+	}
+
+	for code != ERROR2 {
+		f2.Add(f2, f1_half)
+		m := a.conf.RSAf(f2)
+		//fmt.Printf("%s\n", f2.String())
+		//os.Exit(1)
+		code, err = a.Interact(m)
+		if err != nil {
+			return nil, err
+		}
+		//fmt.Printf("%s\n", string(code))
+		//if f2.Cmp(big.NewInt(223)) == 0 {
+		//	os.Exit(1)
+		//}
+	}
+
+	return f2, nil
+}
+
+func (a *Attack) findMesage(f2 *big.Int) (*big.Int, os.Error) {
+	m_min := new(big.Int)
+	m_max := new(big.Int)
+	f_tmp := new(big.Int)
+	tmp := new(big.Int)
+	in := new(big.Int)
+
+	m_min.Add(a.conf.N, f2)
+	m_min.Sub(m_min, big.NewInt(1))
+	m_min, _ = m_min.Div(m_min, f2)
+
+	m_max.Add(a.conf.N, a.conf.B)
+	m_max, _ = m_max.Div(m_max, f2)
+
+	f3 := big.NewInt(0)
+
+	for m_min.Cmp(m_max) != 0 {
+		f_tmp.Mul(a.conf.B, big.NewInt(2))
+		tmp.Sub(m_max, m_min)
+		f_tmp, _ = f_tmp.Div(f_tmp, tmp)
+
+		in.Mul(f_tmp, m_min)
+		in, _ = in.Div(in, a.conf.N)
+
+		f3.Mul(in, a.conf.N)
+		f3.Add(f3, m_min)
+		f3.Sub(f3, big.NewInt(1))
+		f3, _ = f3.Div(f3, m_min)
+
+		m := a.conf.RSAf(f3)
+		code, err := a.Interact(m)
+		if err != nil {
+			return nil, err
+		}
+
+		switch code {
+
+		case ERROR1:
+			m_min.Mul(in, a.conf.N)
+			m_min.Add(m_min, a.conf.B)
+			m_min.Add(m_min, f3)
+			m_min.Sub(m_min, big.NewInt(1))
+			m_min, _ = m_min.Div(m_min, f3)
+
+		case ERROR2:
+			m_max.Mul(in, a.conf.N)
+			m_max.Add(m_max, a.conf.B)
+			m_max, _ = m_max.Div(m_max, f3)
+
+		default:
+			if m_min.Cmp(m_max) > 0 {
+				fmt.Printf("m_min larger than m_max\n")
+				fmt.Printf("%s\n%s\n", m_min.String(), m_max.String())
+			} else {
+				fmt.Printf("Received error code: %s\n", string(code))
+			}
+			os.Exit(1)
+		}
+	}
+
+	m_c := new(big.Int)
+	m_c.Exp(m_min, a.conf.E, a.conf.N)
+
+	if m_c.Cmp(a.conf.C) != 0 {
+		fmt.Printf("Message cipher and given cipertexts don't match.\n")
+		fmt.Printf("%s\n%s\n", m_c.String(), a.conf.C.String())
+		os.Exit(1)
+	}
+
+	fmt.Printf("Message cipher match!\n")
+
+	return m_min, nil
+}
+
 
 func (a *Attack) Run() os.Error {
 	if _, err := exec.LookPath(a.attackFile); err != nil {
@@ -222,32 +269,28 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("Begining attack...\n")
 
 	fmt.Printf("Finding f1...")
-	_, err = a.findF1()
+	f1, err := a.findF1()
 	if err != nil {
 		utils.Fatal(err)
 	}
 	fmt.Printf("done.\n")
+	fmt.Printf("F1: %s\n", f1.String())
 
-	//fmt.Printf("%d\n", len(a.conf.bytes[0]))
-	//fmt.Printf("%d\n", len(a.conf.bytes[3]))
-	//fmt.Printf("%v\n", a.conf.bytes[0])
-	//fmt.Printf("%v\n", a.conf.bytes[3])
+	fmt.Printf("Finding f2...")
+	f2, err := a.findF2(f1)
+	if err != nil {
+		utils.Fatal(err)
+	}
+	fmt.Printf("done.\n")
+	fmt.Printf("F2: %s\n", f2.String())
 
-	//go a.WriteStdin()
-
-	//go a.ReadStdout()
-
-	//go a.ReadStderr()
-
-	//fmt.Printf("%v\n", cmd.Pid)
-	//fmt.Printf("%v\n", cmd.Stdin)
-	//fmt.Printf("%v\n", cmd.Stdout)
-	//fmt.Printf("%v\n", cmd.Stderr)
-
-	//wait, err := cmd.Wait(0)
-	//if err != nil {
-	//	return newError(fmt.Sprintf("error waiting for command: %v", err))
-	//}
+	fmt.Printf("Finding message...")
+	message, err := a.findMesage(f2)
+	if err != nil {
+		utils.Fatal(err)
+	}
+	fmt.Printf("done.\n")
+	fmt.Printf("Message: %s\n", message.String())
 
 	fmt.Printf("Attack complete.\n")
 	fmt.Printf("Interactions: %d\n", a.interactions)
@@ -265,12 +308,4 @@ func main() {
 	if err := a.Run(); err != nil {
 		utils.Fatal(err)
 	}
-
-	//fmt.Printf("%s\n", a.conf.K.String())
-	//fmt.Printf("%s\n", a.conf.B.String())
-	//fmt.Printf("%s\n", a.conf.N.String())
-	//fmt.Printf("%s\n", utils.IntToHex(a.conf.N))
-	//if err := attack.Run(); err != nil {
-	//	fatal(err)
-	//}
 }
