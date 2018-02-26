@@ -3,7 +3,6 @@ package oaep
 import (
 	"big"
 	"bufio"
-	"fmt"
 	"os"
 	"syscall"
 
@@ -73,11 +72,6 @@ func (c *Conf) RSAf(f *big.Int) *big.Int {
 	z.Mul(z, c.C)
 	z = z.Mod(z, c.N)
 
-	if z.Cmp(c.N) >= 0 {
-		fmt.Printf("z is bigger than N..\n")
-		os.Exit(1)
-	}
-
 	return z
 }
 
@@ -88,7 +82,6 @@ func (c *Conf) readNum() (*big.Int, os.Error) {
 	}
 
 	z := new(big.Int)
-
 	_, ok := z.SetString(string(b), Base)
 	if !ok {
 		return nil, os.NewError("failed to convert conf value to hex")
@@ -103,12 +96,9 @@ func (c *Conf) readBytes() ([]byte, os.Error) {
 		return nil, utils.Error("fauled to read bytes from file", err)
 	}
 
-	// Get rid of trailing newline (10)
-	d := make([]byte, len(b)-1)
-	copy(d, b)
-
 	c.Fields = utils.Append(c.Fields, string(b))
 	c.Bytes = utils.AppendBytes(c.Bytes, b)
 
-	return d, nil
+	// Remove trailing new line
+	return b[0 : len(b)-1], nil
 }

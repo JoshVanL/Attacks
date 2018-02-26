@@ -12,14 +12,11 @@ import (
 )
 
 const (
-	SUCCESS      = '0'
-	ERROR1       = '1'
-	ERROR2       = '2'
-	P_OUTOFRANGE = '3'
-	C_OUTOFRANGE = '4'
-	M_LENGTH     = '5'
-	C_LENGTH     = '6'
-	CH_LENGTH    = '7'
+	SUCCESS = '0'
+	ERROR1  = '1'
+	ERROR2  = '2'
+
+	WORD_LENGTH = 256
 )
 
 type Attack struct {
@@ -31,44 +28,6 @@ type Attack struct {
 	block        chan int
 	interactions int
 	stopCh       chan interface{}
-}
-
-func printResponse(e int) {
-	var str string
-
-	switch e {
-	case SUCCESS:
-		str = "SUCCESS(0)"
-	case ERROR1:
-		str = "ERROR1(1)"
-	case ERROR2:
-		str = "ERROR2(2)"
-	case P_OUTOFRANGE:
-		str = "P_OUTOFRANGE(3)"
-	case C_OUTOFRANGE:
-		str = "C_OUTOFRANGE(4)"
-	case M_LENGTH:
-		str = "M_LENGTH(5)"
-	case C_LENGTH:
-		str = "C_LENGTH(6)"
-	case CH_LENGTH:
-		str = "CH_LENGTH(7)"
-	default:
-		str = fmt.Sprintf("OTHER(%d)", e)
-	}
-
-	fmt.Printf("Response: %s\n", str)
-}
-
-func ceilingDiv(x *big.Int, y *big.Int) *big.Int {
-	z := new(big.Int)
-	z, r := z.Div(x, y)
-
-	if r.Cmp(big.NewInt(0)) > 0 {
-		z.Add(z, big.NewInt(1))
-	}
-
-	return z
 }
 
 func NewAttack() (attack *Attack, err os.Error) {
@@ -104,7 +63,7 @@ func (a *Attack) Write(l, c []byte) os.Error {
 }
 
 func (a *Attack) Read() ([]byte, os.Error) {
-	b := make([]byte, 10)
+	b := make([]byte, 2)
 
 	if _, err := a.cmd.Stdout.Read(b); err != nil {
 		return nil, utils.Error("failed to read stdout file", err)
@@ -114,7 +73,7 @@ func (a *Attack) Read() ([]byte, os.Error) {
 }
 
 func (a *Attack) Interact(c *big.Int) (res byte, err os.Error) {
-	n := utils.PadBytes(utils.IntToHexBytes(c), 256)
+	n := utils.Pad(utils.IntToHex(c), WORD_LENGTH)
 
 	if err := a.Write(a.conf.Bytes[2], n); err != nil {
 		return 0, err
@@ -190,7 +149,7 @@ func (a *Attack) findMesage(f2 *big.Int) (*big.Int, os.Error) {
 	i := new(big.Int)
 	two := big.NewInt(2)
 
-	m_min := ceilingDiv(a.conf.N, f2)
+	m_min := utils.CeilingDiv(a.conf.N, f2)
 
 	m_max.Add(a.conf.N, a.conf.B)
 	m_max, _ = m_max.Div(m_max, f2)
@@ -213,7 +172,7 @@ func (a *Attack) findMesage(f2 *big.Int) (*big.Int, os.Error) {
 		i, _ = i.Div(i, a.conf.N)
 
 		f3.Mul(i, a.conf.N)
-		f3 = ceilingDiv(f3, m_min)
+		f3 = utils.CeilingDiv(f3, m_min)
 
 		m := a.conf.RSAf(f3)
 
@@ -227,7 +186,7 @@ func (a *Attack) findMesage(f2 *big.Int) (*big.Int, os.Error) {
 		case ERROR1:
 			m_min.Mul(i, a.conf.N)
 			m_min.Add(m_min, a.conf.B)
-			m_min = ceilingDiv(m_min, f3)
+			m_min = utils.CeilingDiv(m_min, f3)
 
 		case ERROR2:
 			m_max.Mul(i, a.conf.N)
@@ -267,23 +226,25 @@ func (a *Attack) Run() os.Error {
 	}
 	a.cmd = cmd
 
+	now := time.Nanoseconds()
+
 	fmt.Printf("Begining attack...\n")
 
-	fmt.Printf("Finding f1...")
+	fmt.Printf("Finding F1...")
 	f1, err := a.findF1()
 	if err != nil {
 		utils.Fatal(err)
 	}
 	fmt.Printf("done.\n")
-	//fmt.Printf("F1: %s\n", f1.String())
+	fmt.Printf("F1: %s\n", f1.String())
 
-	fmt.Printf("Finding f2...")
+	fmt.Printf("Finding F2...")
 	f2, err := a.findF2(f1)
 	if err != nil {
 		utils.Fatal(err)
 	}
 	fmt.Printf("done.\n")
-	//fmt.Printf("F2: %s\n", f2.String())
+	fmt.Printf("F2: %s\n", f2.String())
 
 	fmt.Printf("Finding message...")
 	message, err := a.findMesage(f2)
@@ -299,6 +260,10 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("PASSED.\n")
 
 	fmt.Printf("Attack complete.\n")
+	fmt.Printf("Elapsed time: %.2fs\n", float((time.Nanoseconds()-now))/1e9)
+
+	targetMaterial := utils.IntToHex(message)
+	fmt.Printf("Target material: [%s]\n", targetMaterial[0:len(targetMaterial)-1])
 	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
@@ -311,11 +276,7 @@ func main() {
 		utils.Fatal(err)
 	}
 
-	now := time.Nanoseconds()
-
 	if err := a.Run(); err != nil {
 		utils.Fatal(err)
 	}
-
-	fmt.Printf("Elapsed time: %.3gs\n", float((time.Nanoseconds()-now))/1e9)
 }
