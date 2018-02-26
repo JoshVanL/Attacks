@@ -1,26 +1,22 @@
 #!/bin/bash
 set -e
-utils="pkg/utils.go"
-file="pkg/file.go"
-oaep="pkg/oaep_c.go"
-cmd="pkg/command.go"
-attack="oaep/attack.go"
 
-baseUtils="utils"
-baseFile="file"
-baseOaep="oaep_c"
-baseCmd="command"
-baseAttack="attack"
+for f in "$@"
+do
+    filename=$(basename "$f")
+    base="${filename%.*}"
+    6g -o ${base}.6 $f
+done
 
-6g -o ${baseUtils}.6 $utils
-6g -o ${baseFile}.6 $file
-6g -o ${baseOaep}.6 $oaep
-6g -o ${baseCmd}.6 $cmd
-6g -o ${baseAttack}.6 $attack
-6l -o oaep/${baseAttack} ${baseAttack}.6
+filename=${@:${#@}}
+out="${filename%.*}"
+filename=$(basename $filename)
+base="${filename%.*}"
+6l -o ${out} ${base}.6
 
-rm ${baseUtils}.6
-rm ${baseOaep}.6
-rm ${baseFile}.6
-rm ${baseCmd}.6
-rm ${baseAttack}.6
+for f in "$@"
+do
+    filename=$(basename "$f")
+    base="${filename%.*}"
+    rm ${base}.6
+done
