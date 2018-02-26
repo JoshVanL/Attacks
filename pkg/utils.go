@@ -49,11 +49,22 @@ func AppendBytes(slice [][]byte, elem []byte) [][]byte {
 }
 
 func ParseArguments() ([]string, os.Error) {
+	var args []string
+
 	if len(os.Args) < 2 || len(os.Args) > 3 {
 		return nil, NewError(fmt.Sprintf("expected 1 or 2 argmuents, got=%d", len(os.Args)-1))
 	}
 
-	return os.Args[1:], nil
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, Error("failed to get current working directory", err)
+	}
+
+	for i := 1; i < len(os.Args); i++ {
+		args = Append(args, fmt.Sprintf("%s/%s", wd, os.Args[i]))
+	}
+
+	return args, nil
 }
 
 func IntToHex(z *big.Int) []byte {

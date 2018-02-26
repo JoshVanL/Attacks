@@ -9,6 +9,7 @@ import (
 
 	"./oaep"
 	"./utils"
+	"./command"
 )
 
 const (
@@ -20,7 +21,7 @@ const (
 )
 
 type Attack struct {
-	cmd *exec.Cmd
+	cmd *command.Command
 
 	attackFile string
 	conf       *oaep.Conf
@@ -52,20 +53,19 @@ func NewAttack() (attack *Attack, err os.Error) {
 }
 
 func (a *Attack) Write(l, c []byte) os.Error {
-	if _, err := a.cmd.Stdin.Write(l); err != nil {
-		return utils.Error("failed to write lable to Stdin", err)
+	if err := a.cmd.WriteStdin(l); err != nil {
+		return utils.Error("failed to write lable", err)
 	}
-	if _, err := a.cmd.Stdin.Write(c); err != nil {
-		return utils.Error("failed to write ciphertext to Stdin", err)
+	if err := a.cmd.WriteStdin(c); err != nil {
+		return utils.Error("failed to write ciphertext ", err)
 	}
 
 	return nil
 }
 
 func (a *Attack) Read() ([]byte, os.Error) {
-	b := make([]byte, 2)
-
-	if _, err := a.cmd.Stdout.Read(b); err != nil {
+	b, err := a.cmd.Read()
+	if err != nil {
 		return nil, utils.Error("failed to read stdout file", err)
 	}
 
@@ -216,15 +216,20 @@ func (a *Attack) checkMessage(m *big.Int) os.Error {
 
 
 func (a *Attack) Run() os.Error {
+	var err os.Error
+
 	if _, err := exec.LookPath(a.attackFile); err != nil {
 		return utils.Error(fmt.Sprintf("error looking up binary file '%s'", a.attackFile), err)
 	}
 
-	cmd, err := exec.Run(a.attackFile, []string{}, nil, exec.Pipe, exec.Pipe, exec.Pipe)
+	a.cmd, err = command.NewCommand(a.attackFile)
 	if err != nil {
-		return utils.Error("error running command", err)
+		return utils.Error("failed to create attack command", err)
 	}
-	a.cmd = cmd
+
+	if err := a.cmd.Run(); err != nil {
+		return utils.Error("failed to run attack command", err)
+	}
 
 	now := time.Nanoseconds()
 
