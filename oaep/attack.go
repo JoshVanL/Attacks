@@ -7,7 +7,7 @@ import (
 	"big"
 	"os"
 
-	"./oaep"
+	"./oaep_c"
 	"./utils"
 	"./command"
 )
@@ -24,11 +24,9 @@ type Attack struct {
 	cmd *command.Command
 
 	attackFile string
-	conf       *oaep.Conf
+	conf       *oaep_c.Conf
 
-	block        chan int
 	interactions int
-	stopCh       chan interface{}
 }
 
 func NewAttack() (attack *Attack, err os.Error) {
@@ -37,7 +35,7 @@ func NewAttack() (attack *Attack, err os.Error) {
 		return nil, err
 	}
 
-	conf, err := oaep.NewConf(args[1])
+	conf, err := oaep_c.NewConf(args[1])
 	if err != nil {
 		return nil, err
 	}
@@ -45,8 +43,6 @@ func NewAttack() (attack *Attack, err os.Error) {
 	return &Attack{
 		attackFile: args[0],
 		conf: conf,
-		block: make(chan int),
-		stopCh: make(chan interface{}),
 		interactions: 0,
 	},
 		nil
@@ -75,7 +71,7 @@ func (a *Attack) Read() ([]byte, os.Error) {
 func (a *Attack) Interact(c *big.Int) (res byte, err os.Error) {
 	n := utils.Pad(utils.IntToHex(c), WORD_LENGTH)
 
-	if err := a.Write(a.conf.Bytes[2], n); err != nil {
+	if err := a.Write(a.conf.L, n); err != nil {
 		return 0, err
 	}
 
@@ -238,7 +234,7 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("Finding F1...")
 	f1, err := a.findF1()
 	if err != nil {
-		utils.Fatal(err)
+		return err
 	}
 	fmt.Printf("done.\n")
 	fmt.Printf("F1: %s\n", f1.String())
@@ -246,7 +242,7 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("Finding F2...")
 	f2, err := a.findF2(f1)
 	if err != nil {
-		utils.Fatal(err)
+		return err
 	}
 	fmt.Printf("done.\n")
 	fmt.Printf("F2: %s\n", f2.String())
@@ -254,9 +250,13 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("Finding message...")
 	message, err := a.findMesage(f2)
 	if err != nil {
-		utils.Fatal(err)
+		return err
 	}
 	fmt.Printf("done.\n")
+
+	if err := a.cmd.Kill(); err != nil {
+		return err
+	}
 
 	fmt.Printf("Checking message...")
 	if err := a.checkMessage(message); err != nil {

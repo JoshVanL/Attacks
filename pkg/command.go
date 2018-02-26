@@ -44,11 +44,19 @@ func (c *Command) WriteStdin(b []byte) os.Error {
 }
 
 func (c *Command) Read() ([]byte, os.Error) {
-	b := make([]byte, 200)
+	b := make([]byte, 1024)
 
 	if _, err := c.cmd.Stdout.Read(b); err != nil {
 		return nil, utils.Error("error reading command stdout", err)
 	}
 
 	return b, nil
+}
+
+func (c *Command) Kill() os.Error {
+	if _, err := c.cmd.Wait(os.WNOHANG); err != nil {
+		return utils.Error("error closing running command", err)
+	}
+
+	return nil
 }

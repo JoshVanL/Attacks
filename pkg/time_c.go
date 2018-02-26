@@ -1,4 +1,4 @@
-package oaep
+package time_c
 
 import (
 	"big"
@@ -20,11 +20,6 @@ type Conf struct {
 
 	N *big.Int
 	E *big.Int
-	L *big.Int
-	C *big.Int
-
-	K *big.Int
-	B *big.Int
 
 	reader *bufio.Reader
 }
@@ -47,32 +42,7 @@ func NewConf(filename string) (*Conf, os.Error) {
 		return nil, utils.Error("failed to get e", err)
 	}
 
-	if conf.L, err = conf.readNum(); err != nil {
-		return nil, utils.Error("failed to get l", err)
-	}
-
-	if conf.C, err = conf.readNum(); err != nil {
-		return nil, utils.Error("failed to get c", err)
-	}
-
-	conf.K = big.NewInt(int64(len(conf.Fields[0]) / 2))
-
-	// B = 2 ^ (8 * (k-1))
-	conf.B = new(big.Int)
-	conf.B.Sub(conf.K, big.NewInt(1))
-	conf.B.Mul(conf.B, big.NewInt(8))
-	conf.B.Exp(big.NewInt(2), conf.B, nil)
-
 	return conf, nil
-}
-
-func (c *Conf) RSAf(f *big.Int) *big.Int {
-	z := new(big.Int)
-	z.Exp(f, c.E, c.N)
-	z.Mul(z, c.C)
-	z = z.Mod(z, c.N)
-
-	return z
 }
 
 func (c *Conf) readNum() (*big.Int, os.Error) {
