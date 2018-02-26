@@ -3,6 +3,7 @@ package oaep
 import (
 	"big"
 	"bufio"
+	"fmt"
 	"os"
 	"syscall"
 
@@ -70,8 +71,14 @@ func (c *Conf) RSAf(f *big.Int) *big.Int {
 	z := new(big.Int)
 	z.Exp(f, c.E, c.N)
 	z.Mul(z, c.C)
+	z = z.Mod(z, c.N)
 
-	return z.Mod(z, c.N)
+	if z.Cmp(c.N) >= 0 {
+		fmt.Printf("z is bigger than N..\n")
+		os.Exit(1)
+	}
+
+	return z
 }
 
 func (c *Conf) readNum() (*big.Int, os.Error) {
