@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"big"
+	//"big"
 
 	"./utils"
 	"./time_c"
@@ -50,28 +50,28 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
-	c := big.NewInt(2)
+	//c := big.NewInt(2)
 
-	for {
-		n := utils.Pad(utils.IntToHex(c), WORD_LENGTH)
+	//for {
+	//	n := utils.Pad(utils.IntToHex(c), WORD_LENGTH)
 
-		if err := a.cmd.WriteStdin(n); err != nil {
-			return utils.Error("failed to write cipher", err)
-		}
+	//	if err := a.cmd.WriteStdin(n); err != nil {
+	//		return utils.Error("failed to write cipher", err)
+	//	}
 
-		b, err := a.cmd.ReadStdout()
-		if err != nil {
-			return utils.Error("failed to read message", err)
-		}
+	//	b, err := a.cmd.ReadStdout()
+	//	if err != nil {
+	//		return utils.Error("failed to read message", err)
+	//	}
 
-		m, t := utils.SplitBytes(b, '\n')
-		t, _ = utils.SplitBytes(t, '\n')
-		fmt.Printf("cipher:  %s", string(n))
-		fmt.Printf("message: %s\n", string(m))
-		fmt.Printf("time:    %s\n", string(t))
+	//	m, t := utils.SplitBytes(b, '\n')
+	//	t, _ = utils.SplitBytes(t, '\n')
+	//	fmt.Printf("cipher:  %s", string(n))
+	//	fmt.Printf("message: %s\n", string(m))
+	//	fmt.Printf("time:    %s\n", string(t))
 
-		c.Mul(c, c)
-	}
+	//	c.Mul(c, c)
+	//}
 
 	return nil
 }

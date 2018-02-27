@@ -91,41 +91,6 @@ func ParseArguments() ([]string, os.Error) {
 	return args, nil
 }
 
-func IntToHex(z *big.Int) []byte {
-	bytes := make([]byte, 512)
-
-	num := new(big.Int)
-	num.Set(z)
-
-	power := new(big.Int)
-	quot := new(big.Int)
-	hex := big.NewInt(BASE)
-	one := big.NewInt(1)
-	zero := big.NewInt(0)
-	index := big.NewInt(WORD_LENGTH)
-
-	loc := 0
-
-	for index.Cmp(zero) >= 0 {
-		power.Exp(hex, index, nil)
-
-		if z.Cmp(power) < 0 {
-			bytes[loc] = '0'
-
-		} else {
-			quot, num = num.Div(num, power)
-			bytes[loc] = ZToHex(quot)
-		}
-
-		index.Sub(index, one)
-		loc++
-	}
-
-	bytes[loc] = '\n'
-
-	return TrimLeft(bytes)
-}
-
 func Pad(bytes []byte, s int) []byte {
 	s++
 	b := make([]byte, s)

@@ -65,8 +65,7 @@ func NewConf(fileName string) (*Conf, os.Error) {
 }
 
 func (c *Conf) RSAf(f *big.Int) *big.Int {
-	z := new(big.Int)
-	z.Exp(f, c.E, c.N)
+	z := new(big.Int).Exp(f, c.E, c.N)
 	z.Mul(z, c.C)
 	z = z.Mod(z, c.N)
 
@@ -74,7 +73,6 @@ func (c *Conf) RSAf(f *big.Int) *big.Int {
 }
 
 func (c *Conf) I2OSP(x int64, l int64) (X []byte, err os.Error) {
-	// Should be 256 but we're doing hex
 	if x >= int64(math.Pow(256, float64(l))) {
 		return nil, utils.NewError("integer too large")
 	}

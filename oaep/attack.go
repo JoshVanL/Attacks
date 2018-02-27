@@ -4,6 +4,8 @@ import (
 	"time"
 	"bytes"
 	"fmt"
+	"encoding/hex"
+	"crypto/sha1"
 	"big"
 	"os"
 
@@ -18,6 +20,7 @@ const (
 	ERROR2  = '2'
 
 	WORD_LENGTH = 256
+	BASE        = 16
 )
 
 type Attack struct {
@@ -72,7 +75,9 @@ func (a *Attack) Read() ([]byte, os.Error) {
 }
 
 func (a *Attack) Interact(c *big.Int) (res byte, err os.Error) {
-	n := utils.Pad(utils.IntToHex(c), WORD_LENGTH)
+	n := make([]byte, len(c.Bytes())*2)
+	hex.Encode(n, c.Bytes())
+	n = utils.Pad(bytes.AddByte(n, '\n'), WORD_LENGTH)
 
 	if err := a.Write(a.conf.L, n); err != nil {
 		return 0, err
@@ -158,9 +163,7 @@ func (a *Attack) findEM(f2 *big.Int) (*big.Int, os.Error) {
 	for m_min.Cmp(m_max) != 0 {
 
 		if m_min.Cmp(m_max) > 0 {
-			fmt.Printf("m_min larger than m_max\n")
-			fmt.Printf("%s\n%s\n", m_min.String(), m_max.String())
-			os.Exit(1)
+			return nil, utils.NewError(fmt.Sprintf("m_min larger than m_max: %s : %s\n", m_min.String(), m_max.String()))
 		}
 
 		f_tmp.Mul(a.conf.B, two)
@@ -214,8 +217,7 @@ func (a *Attack) checkMessage(m *big.Int) os.Error {
 }
 
 func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
-	hLen := int64(20)
-
+	hLen := int64(sha1.New().Size())
 	m := em.Bytes()
 
 	maskedSeed := m[0:hLen]
@@ -234,12 +236,23 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 
 	DB := utils.XOR(maskedDB, dbMask)
 
-	index := bytes.IndexByte(DB, 1)
-	if index < int(hLen) {
+	indexM := bytes.IndexByte(DB, 1)
+	if indexM < int(hLen) {
 		return nil, utils.NewError("failed to find 01 in DB string")
 	}
 
-	return DB[index+1:], nil
+	// Check that pHash and pHash' are equal
+	hash := sha1.New()
+	l := new(big.Int)
+	l.SetString(string(a.conf.L[0:len(a.conf.L)-1]), BASE)
+	if _, err := hash.Write(l.Bytes()); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(hash.Sum(), DB[0:hLen]) {
+		return nil, utils.NewError("label hash and resulting hash are different")
+	}
+
+	return DB[indexM+1:], nil
 }
 
 func (a *Attack) Run() os.Error {
