@@ -240,17 +240,21 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	if indexM < int(hLen) {
 		return nil, utils.NewError("failed to find 01 in DB string")
 	}
+	fmt.Printf("done.\n")
 
 	// Check that pHash and pHash' are equal
+	fmt.Printf("Checking label...")
 	hash := sha1.New()
 	l := new(big.Int)
 	l.SetString(string(a.conf.L[0:len(a.conf.L)-1]), BASE)
 	if _, err := hash.Write(l.Bytes()); err != nil {
 		return nil, err
 	}
+
 	if !bytes.Equal(hash.Sum(), DB[0:hLen]) {
 		return nil, utils.NewError("label hash and resulting hash are different")
 	}
+	fmt.Printf("done.\n")
 
 	return DB[indexM+1:], nil
 }
@@ -303,7 +307,6 @@ func (a *Attack) Run() os.Error {
 	if err != nil {
 		return utils.Error("decoding error", err)
 	}
-	fmt.Printf("done.\n")
 
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)

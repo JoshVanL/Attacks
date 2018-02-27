@@ -8,6 +8,7 @@ import (
 	"./utils"
 	"./time_c"
 	"./command"
+	"./montgomery"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 type Attack struct {
 	cmd  *command.Command
 	conf *time_c.Conf
+	mnt  *montgomery.Montgomery
 
 	interactions int
 }
@@ -41,6 +43,7 @@ func NewAttack() (attack *Attack, err os.Error) {
 		conf: conf,
 		cmd: cmd,
 		interactions: 0,
+		mnt: montgomery.NewMontgomery(conf.N),
 	},
 		nil
 }
@@ -49,6 +52,11 @@ func (a *Attack) Run() os.Error {
 	if err := a.cmd.Run(); err != nil {
 		return err
 	}
+
+	f := a.mnt.Mul(a.conf.E, a.conf.N)
+	fmt.Printf("%s\n", f.String())
+
+	//N := new(big.Int).SetBytes([]byte{255, 0, 0, 0, 0, 0, 0, 0})
 
 	//c := big.NewInt(2)
 
