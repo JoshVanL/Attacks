@@ -217,7 +217,11 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	n = n[2 : len(n)-1]
 	hLen := int64(20)
 
+	fmt.Printf("%v\n", n)
 	m := utils.HexToOct(n)
+	fmt.Printf("%v\n", m)
+	fmt.Printf("%d\n", len(n))
+	fmt.Printf("%d\n", len(m))
 
 	maskedSeed := m[0:hLen]
 	maskedDB := m[hLen:len(m)]
@@ -227,17 +231,32 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 		return nil, utils.Error("error calculating seedMask", err)
 	}
 
-	seed := utils.XOR(maskedSeed, seedMask)
+	fmt.Printf("seedMake: %v\n", seedMask)
+
+	nb := len(maskedSeed)
+	if nb < len(seedMask) {
+		nb = len(seedMask)
+	}
+	seed := make([]byte, nb)
+	utils.XOR(seed, maskedSeed, seedMask)
 
 	// Need to get rid of the +40 (ceil div)
-	dbMask, err := a.conf.MGF1(seed, (128 - hLen + 20))
+	dbMask, err := a.conf.MGF1(seed, (int64(len(m)) - hLen))
 	if err != nil {
 		return nil, utils.Error("error calculating dbMask", err)
 	}
 
 	maskedDB = utils.HexToOct(maskedDB)
 
-	DB := utils.XOR(maskedDB, dbMask)
+	fmt.Printf("mask:%v\n", maskedDB)
+	fmt.Printf("cdmk:%v\n", dbMask)
+	nb = len(maskedDB)
+	if nb < len(dbMask) {
+		nb = len(dbMask)
+	}
+	DB := make([]byte, nb)
+	utils.XOR(DB, maskedDB, dbMask)
+	fmt.Printf("DB  :%v\n", DB)
 
 	i, M := utils.Find(DB, 1, int(hLen))
 	if i < 0 {

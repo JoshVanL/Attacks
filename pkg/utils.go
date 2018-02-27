@@ -207,38 +207,15 @@ func SplitBytes(b []byte, s byte) ([]byte, []byte) {
 	return b[0:i], b[i+1 : len(b)]
 }
 
-func XOR(x []byte, y []byte) []byte {
-	var cpy int
-	var size int
-
-	var xstart int
-	var ystart int
-
-	var z []byte
-
-	if len(x) > len(y) {
-		size = len(x)
-		cpy = len(x) - len(y)
-		ystart = cpy
-		z = make([]byte, size)
-		for i := 0; i < cpy; i++ {
-			z[i] = x[i]
-		}
-	} else {
-		size = len(y)
-		cpy = len(y) - len(x)
-		xstart = cpy
-		z = make([]byte, size)
-		for i := 0; i < cpy; i++ {
-			z[i] = y[i]
-		}
+func XOR(dst, a, b []byte) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
 	}
-
-	for i := cpy; i < size; i++ {
-		z[i] = x[i-xstart] ^ y[i-ystart]
+	for i := 0; i < n; i++ {
+		dst[i] = a[i] ^ b[i]
 	}
-
-	return z
+	return n
 }
 
 func Find(x []byte, s byte, start int) (index int, split []byte) {
@@ -253,7 +230,7 @@ func Find(x []byte, s byte, start int) (index int, split []byte) {
 
 func hexByteToByte(b byte) byte {
 	if b >= 'A' {
-		return b - 15
+		return b - 55
 	}
 
 	return b - 48
@@ -263,16 +240,16 @@ func HexToOct(hex []byte) []byte {
 	var b []byte
 	if len(hex)%2 == 0 {
 		b = make([]byte, len(hex)/2)
-		for i := 0; i < len(hex)/2; i++ {
-			b[i] = hex[i] * 16
-			b[i] += hex[i+1]
+		for i := 0; i < len(b); i++ {
+			b[i] = hexByteToByte(hex[2*i]) * 16
+			b[i] += hexByteToByte(hex[2*i+1])
 		}
 	} else {
 		b = make([]byte, (len(hex)+1)/2)
 		b[0] = hexByteToByte(hex[0])
-		for i := 1; i < len(hex)/2; i++ {
-			b[i] = hex[i] * 16
-			b[i] += hex[i+1]
+		for i := 1; i < len(b); i++ {
+			b[i] = hexByteToByte(hex[(2*i)-1]) * 16
+			b[i] += hexByteToByte(hex[2*i])
 		}
 	}
 

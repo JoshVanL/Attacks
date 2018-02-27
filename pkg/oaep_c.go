@@ -4,6 +4,7 @@ import (
 	"big"
 	"os"
 	"math"
+	"fmt"
 	"crypto/sha1"
 
 	"./utils"
@@ -103,7 +104,7 @@ func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 
 	hash := sha1.New()
 	hLen := int64(hash.Size())
-	T := make([]byte, hLen)
+	var T []byte
 
 	for i := int64(0); i < l/hLen; i++ {
 		hash = sha1.New()
@@ -112,8 +113,11 @@ func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 			return nil, err
 		}
 
-		Z = utils.AppendByteSlice(Z, C)
-		_, err = hash.Write(Z)
+		fmt.Printf("C: %v\n", C)
+
+		z := utils.AppendByteSlice(Z, C)
+		fmt.Printf("z: %v\n", z)
+		_, err = hash.Write(z)
 		if err != nil {
 			return nil, err
 		}
@@ -123,6 +127,9 @@ func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 		T = utils.AppendByteSlice(T, h)
 		hash.Reset()
 	}
+
+	fmt.Printf("T size:%d\n", len(T))
+	fmt.Printf("T:%v\n", T)
 
 	return T[0:l], nil
 }
