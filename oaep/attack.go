@@ -2,6 +2,7 @@ package main
 
 import (
 	"time"
+	"bytes"
 	"fmt"
 	"big"
 	"os"
@@ -206,22 +207,16 @@ func (a *Attack) checkMessage(m *big.Int) os.Error {
 	m_c.Exp(m, a.conf.E, a.conf.N)
 
 	if m_c.Cmp(a.conf.C) != 0 {
-		return utils.NewError("Calculated message cipher and given cipertexts don't match.")
+		return utils.NewError("calculated message cipher and given cipertexts don't match.")
 	}
 
 	return nil
 }
 
 func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
-	n := utils.Pad(utils.IntToHex(em), WORD_LENGTH)
-	n = n[2 : len(n)-1]
 	hLen := int64(20)
 
-	fmt.Printf("%v\n", n)
-	m := utils.HexToOct(n)
-	fmt.Printf("%v\n", m)
-	fmt.Printf("%d\n", len(n))
-	fmt.Printf("%d\n", len(m))
+	m := em.Bytes()
 
 	maskedSeed := m[0:hLen]
 	maskedDB := m[hLen:len(m)]
@@ -230,52 +225,31 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	if err != nil {
 		return nil, utils.Error("error calculating seedMask", err)
 	}
+	seed := utils.XOR(maskedSeed, seedMask)
 
-	fmt.Printf("seedMake: %v\n", seedMask)
-
-	nb := len(maskedSeed)
-	if nb < len(seedMask) {
-		nb = len(seedMask)
-	}
-	seed := make([]byte, nb)
-	utils.XOR(seed, maskedSeed, seedMask)
-
-	// Need to get rid of the +40 (ceil div)
-	dbMask, err := a.conf.MGF1(seed, (int64(len(m)) - hLen))
+	dbMask, err := a.conf.MGF1(seed, int64(len(m))-hLen)
 	if err != nil {
 		return nil, utils.Error("error calculating dbMask", err)
 	}
 
-	maskedDB = utils.HexToOct(maskedDB)
+	DB := utils.XOR(maskedDB, dbMask)
 
-	fmt.Printf("mask:%v\n", maskedDB)
-	fmt.Printf("cdmk:%v\n", dbMask)
-	nb = len(maskedDB)
-	if nb < len(dbMask) {
-		nb = len(dbMask)
-	}
-	DB := make([]byte, nb)
-	utils.XOR(DB, maskedDB, dbMask)
-	fmt.Printf("DB  :%v\n", DB)
-
-	i, M := utils.Find(DB, 1, int(hLen))
-	if i < 0 {
+	index := bytes.IndexByte(DB, 1)
+	if index < int(hLen) {
 		return nil, utils.NewError("failed to find 01 in DB string")
 	}
 
-	M = utils.IntToHex(new(big.Int).SetBytes(M))
-
-	return M, nil
+	return DB[index+1:], nil
 }
 
 func (a *Attack) Run() os.Error {
+	fmt.Printf("Executing Attack.\n")
+
 	if err := a.cmd.Run(); err != nil {
 		return utils.Error("failed to run attack command", err)
 	}
 
 	now := time.Nanoseconds()
-
-	fmt.Printf("Begining attack...\n")
 
 	fmt.Printf("Finding F1...")
 	f1, err := a.findF1()
@@ -309,31 +283,31 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 	fmt.Printf("done.\n")
-	emstr := utils.IntToHex(em)
-	fmt.Printf("EM: [%s]\n", string(emstr[0:len(emstr)-1]))
+	fmt.Printf("EM: [%X]\n", em.Bytes())
 
-	fmt.Printf("Calulating message...")
+	fmt.Printf("Calculating message...")
 	M, err := a.EME_OAEP_Decode(em)
 	if err != nil {
-		return err
+		return utils.Error("decoding error", err)
 	}
-	fmt.Printf("done\n")
+	fmt.Printf("done.\n")
 
-	fmt.Printf("Attack complete.\n")
-	fmt.Printf("Elapsed time: %.2fs\n", float((time.Nanoseconds()-now))/1e9)
+	fmt.Printf("Attack Complete.\n")
+	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
 
-	fmt.Printf("Target material: [%s]\n", string(M[0:len(M)-1]))
+	fmt.Printf("Target material: [%X]\n", M)
 	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
 
 func main() {
-	fmt.Printf("Initalising attack...\n")
+	fmt.Printf("Initialising attack...")
 	a, err := NewAttack()
 	if err != nil {
 		utils.Fatal(err)
 	}
+	fmt.Printf("done.\n")
 
 	if err := a.Run(); err != nil {
 		utils.Fatal(err)

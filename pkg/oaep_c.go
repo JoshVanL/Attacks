@@ -4,7 +4,7 @@ import (
 	"big"
 	"os"
 	"math"
-	"fmt"
+	"bytes"
 	"crypto/sha1"
 
 	"./utils"
@@ -57,9 +57,7 @@ func NewConf(fileName string) (*Conf, os.Error) {
 
 	conf.K = big.NewInt(int64(k / 2))
 
-	// B = 2 ^ (8 * (k-1))
-	conf.B = new(big.Int)
-	conf.B.Sub(conf.K, big.NewInt(1))
+	conf.B = new(big.Int).Sub(conf.K, big.NewInt(1))
 	conf.B.Mul(conf.B, big.NewInt(8))
 	conf.B.Exp(big.NewInt(2), conf.B, nil)
 
@@ -106,17 +104,17 @@ func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 	hLen := int64(hash.Size())
 	var T []byte
 
-	for i := int64(0); i < l/hLen; i++ {
+	v := float64(l) / float64(hLen)
+	v = math.Ceil(v)
+
+	for i := int64(0); i < int64(v); i++ {
 		hash = sha1.New()
 		C, err := c.I2OSP(i, 4)
 		if err != nil {
 			return nil, err
 		}
 
-		fmt.Printf("C: %v\n", C)
-
 		z := utils.AppendByteSlice(Z, C)
-		fmt.Printf("z: %v\n", z)
 		_, err = hash.Write(z)
 		if err != nil {
 			return nil, err
@@ -124,12 +122,8 @@ func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 
 		h := hash.Sum()
 
-		T = utils.AppendByteSlice(T, h)
-		hash.Reset()
+		T = bytes.Add(T, h)
 	}
-
-	fmt.Printf("T size:%d\n", len(T))
-	fmt.Printf("T:%v\n", T)
 
 	return T[0:l], nil
 }

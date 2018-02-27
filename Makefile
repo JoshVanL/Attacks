@@ -9,6 +9,7 @@ help:
 all: oaep time
 
 oaep:
+	./build.sh pkg/utils.go pkg/file.go pkg/oaep_c.go test/oaep_test.go
 	./build.sh pkg/utils.go pkg/file.go pkg/oaep_c.go pkg/command.go oaep/attack.go
 
 time: time/attack.go

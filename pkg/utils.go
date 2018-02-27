@@ -207,15 +207,38 @@ func SplitBytes(b []byte, s byte) ([]byte, []byte) {
 	return b[0:i], b[i+1 : len(b)]
 }
 
-func XOR(dst, a, b []byte) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
+func XOR(x []byte, y []byte) []byte {
+	var cpy int
+	var size int
+
+	var xstart int
+	var ystart int
+
+	var z []byte
+
+	if len(x) > len(y) {
+		size = len(x)
+		cpy = len(x) - len(y)
+		ystart = cpy
+		z = make([]byte, size)
+		for i := 0; i < cpy; i++ {
+			z[i] = x[i]
+		}
+	} else {
+		size = len(y)
+		cpy = len(y) - len(x)
+		xstart = cpy
+		z = make([]byte, size)
+		for i := 0; i < cpy; i++ {
+			z[i] = y[i]
+		}
 	}
-	for i := 0; i < n; i++ {
-		dst[i] = a[i] ^ b[i]
+
+	for i := cpy; i < size; i++ {
+		z[i] = x[i-xstart] ^ y[i-ystart]
 	}
-	return n
+
+	return z
 }
 
 func Find(x []byte, s byte, start int) (index int, split []byte) {
