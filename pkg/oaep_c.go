@@ -4,7 +4,6 @@ import (
 	"big"
 	"os"
 	"math"
-	//"fmt"
 	"crypto/sha1"
 
 	"./utils"
@@ -87,11 +86,9 @@ func (c *Conf) I2OSP(x int64, l int64) (X []byte, err os.Error) {
 
 	index := 0
 	for i := l - 1; i >= 0; i-- {
-		// Should be 256 but we're doing hex
 		p = int64(math.Pow(256, float64(i)))
 		n = x / p
 		x = x % p
-		//X[index] = utils.ZToHex(big.NewInt(n))
 		X[index] = byte(n)
 		index++
 	}
@@ -108,32 +105,22 @@ func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 	hLen := int64(hash.Size())
 	T := make([]byte, hLen)
 
-	//fmt.Printf("l:%d\n", l)
-	//fmt.Printf("h:%d\n", hLen)
-	//fmt.Printf("l:%d\n", l/hLen)
 	for i := int64(0); i < l/hLen; i++ {
-		// use hex 8 instead of 4 so we can read it
+		hash = sha1.New()
 		C, err := c.I2OSP(i, 4)
 		if err != nil {
 			return nil, err
 		}
 
-		//fmt.Printf("Z%s\n", string(Z))
 		Z = utils.AppendByteSlice(Z, C)
-		//fmt.Printf("C%s\n", string(C))
-		//fmt.Printf("Z%s\n", string(Z))
 		_, err = hash.Write(Z)
 		if err != nil {
 			return nil, err
 		}
 
 		h := hash.Sum()
-		//fmt.Printf("C%s\n", string(C))
-		//fmt.Printf("h%s\n", string(h))
-		//fmt.Printf("T%s\n", string(T))
 
 		T = utils.AppendByteSlice(T, h)
-		//fmt.Printf("T%s\n", string(T))
 		hash.Reset()
 	}
 

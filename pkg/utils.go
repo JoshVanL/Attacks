@@ -234,11 +234,6 @@ func XOR(x []byte, y []byte) []byte {
 		}
 	}
 
-	//fmt.Printf(">>%d\n", size)
-	//fmt.Printf(">>%d\n", len(x))
-	//fmt.Printf(">>%d\n", len(y))
-	//fmt.Printf(">>%d\n", cpy)
-
 	for i := cpy; i < size; i++ {
 		z[i] = x[i-xstart] ^ y[i-ystart]
 	}
