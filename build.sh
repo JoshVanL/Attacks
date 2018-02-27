@@ -14,9 +14,4 @@ filename=$(basename $filename)
 base="${filename%.*}"
 6l -o ${out} ${base}.6
 
-for f in "$@"
-do
-    filename=$(basename "$f")
-    base="${filename%.*}"
-    rm ${base}.6
-done
+rm *.6

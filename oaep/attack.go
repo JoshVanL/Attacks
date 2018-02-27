@@ -1,10 +1,10 @@
 package main
 
 import (
-	"exec"
 	"time"
 	"fmt"
 	"big"
+	//"encoding/hex"
 	"os"
 
 	"./oaep_c"
@@ -21,10 +21,8 @@ const (
 )
 
 type Attack struct {
-	cmd *command.Command
-
-	attackFile string
-	conf       *oaep_c.Conf
+	cmd  *command.Command
+	conf *oaep_c.Conf
 
 	interactions int
 }
@@ -40,10 +38,15 @@ func NewAttack() (attack *Attack, err os.Error) {
 		return nil, err
 	}
 
+	cmd, err := command.NewCommand(args[0])
+	if err != nil {
+		return nil, err
+	}
+
 	return &Attack{
-		attackFile: args[0],
 		conf: conf,
 		interactions: 0,
+		cmd: cmd,
 	},
 		nil
 }
@@ -60,7 +63,7 @@ func (a *Attack) Write(l, c []byte) os.Error {
 }
 
 func (a *Attack) Read() ([]byte, os.Error) {
-	b, err := a.cmd.Read()
+	b, err := a.cmd.ReadStdout()
 	if err != nil {
 		return nil, utils.Error("failed to read stdout file", err)
 	}
@@ -138,7 +141,7 @@ func (a *Attack) findF2(f1 *big.Int) (*big.Int, os.Error) {
 	return f2, nil
 }
 
-func (a *Attack) findMesage(f2 *big.Int) (*big.Int, os.Error) {
+func (a *Attack) findEM(f2 *big.Int) (*big.Int, os.Error) {
 	m_max := new(big.Int)
 	f_tmp := new(big.Int)
 	tmp := new(big.Int)
@@ -210,19 +213,59 @@ func (a *Attack) checkMessage(m *big.Int) os.Error {
 	return nil
 }
 
+func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
+	n := utils.Pad(utils.IntToHex(em), WORD_LENGTH)
+	n = n[2 : len(n)-1]
+	hLen := int64(20)
+
+	//fmt.Printf("em:%s\n", string(n))
+
+	//m := make([]byte, len(n))
+	//hex.Decode(m, n)
+	m := utils.HexToOct(n)
+
+	//fmt.Printf("%s\n", string(m))
+
+	maskedSeed := m[0:hLen]
+	maskedDB := m[hLen:len(m)]
+	//fmt.Printf("maskedseed:%s\n", string(maskedSeed))
+	//fmt.Printf("maskedDB:%s\n", string(maskedDB))
+
+	seedMask, err := a.conf.MGF1(maskedDB, hLen)
+	if err != nil {
+		return nil, utils.Error("error calculating seedMask", err)
+	}
+
+	//fmt.Printf("seedMask:%s\n", string(seedMask))
+
+	seed := utils.XOR(maskedSeed, seedMask)
+
+	//fmt.Printf("seed:%s\n", string(seed))
+
+	// Need to get rid of the +40 (ceil div)
+	dbMask, err := a.conf.MGF1(seed, (128 - hLen + 20))
+	if err != nil {
+		return nil, utils.Error("error calculating dbMask", err)
+	}
+
+	//fmt.Printf("\n\ndbmask:>>>>%s\n", string(dbMask))
+	maskedDB = utils.HexToOct(maskedDB)
+
+	DB := utils.XOR(maskedDB, dbMask)
+
+	//fmt.Printf("DB:%s\n", string(DB))
+
+	i, M := utils.Find(DB, 1, int(hLen))
+	if i < 0 {
+		return nil, utils.NewError("failed to find 01 in DB string")
+	}
+
+	M = utils.IntToHex(new(big.Int).SetBytes(M))
+
+	return M, nil
+}
 
 func (a *Attack) Run() os.Error {
-	var err os.Error
-
-	if _, err := exec.LookPath(a.attackFile); err != nil {
-		return utils.Error(fmt.Sprintf("error looking up binary file '%s'", a.attackFile), err)
-	}
-
-	a.cmd, err = command.NewCommand(a.attackFile)
-	if err != nil {
-		return utils.Error("failed to create attack command", err)
-	}
-
 	if err := a.cmd.Run(); err != nil {
 		return utils.Error("failed to run attack command", err)
 	}
@@ -247,8 +290,8 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("done.\n")
 	fmt.Printf("F2: %s\n", f2.String())
 
-	fmt.Printf("Finding message...")
-	message, err := a.findMesage(f2)
+	fmt.Printf("Finding EM...")
+	em, err := a.findEM(f2)
 	if err != nil {
 		return err
 	}
@@ -258,17 +301,27 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
-	fmt.Printf("Checking message...")
-	if err := a.checkMessage(message); err != nil {
-		utils.Fatal(message)
+	fmt.Printf("Checking EM...")
+	if err := a.checkMessage(em); err != nil {
+		return err
 	}
-	fmt.Printf("PASSED.\n")
+	fmt.Printf("done.\n")
+	emstr := utils.IntToHex(em)
+	fmt.Printf("EM: [%s]\n", string(emstr[0:len(emstr)-1]))
+
+	fmt.Printf("Calulating message...")
+	M, err := a.EME_OAEP_Decode(em)
+	if err != nil {
+		return err
+	}
+	//fmt.Printf("Message: %s\n", string(M))
+	fmt.Printf("done\n")
 
 	fmt.Printf("Attack complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n", float((time.Nanoseconds()-now))/1e9)
 
-	targetMaterial := utils.IntToHex(message)
-	fmt.Printf("Target material: [%s]\n", targetMaterial[0:len(targetMaterial)-1])
+	//targetMaterial := utils.IntToHex(em)
+	fmt.Printf("Target material: [%s]\n", string(M[0:len(M)-1]))
 	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil

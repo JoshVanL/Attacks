@@ -43,7 +43,7 @@ func (c *Command) WriteStdin(b []byte) os.Error {
 	return nil
 }
 
-func (c *Command) Read() ([]byte, os.Error) {
+func (c *Command) ReadStdout() ([]byte, os.Error) {
 	b := make([]byte, 1024)
 
 	if _, err := c.cmd.Stdout.Read(b); err != nil {

@@ -48,6 +48,30 @@ func AppendBytes(slice [][]byte, elem []byte) [][]byte {
 	return fresh
 }
 
+func AppendByte(slice []byte, elem byte) []byte {
+	if len(slice) < cap(slice) {
+		slice = slice[0 : len(slice)+1]
+		slice[len(slice)-1] = elem
+		return slice
+	}
+
+	fresh := make([]byte, len(slice)+1, cap(slice)*2+1)
+	copy(fresh, slice)
+	fresh[len(slice)] = elem
+	return fresh
+}
+
+func AppendByteSlice(slice []byte, elems []byte) []byte {
+	fresh := make([]byte, len(slice))
+	copy(fresh, slice)
+
+	for _, elem := range elems {
+		fresh = AppendByte(fresh, elem)
+	}
+
+	return fresh
+}
+
 func ParseArguments() ([]string, os.Error) {
 	var args []string
 
@@ -90,7 +114,7 @@ func IntToHex(z *big.Int) []byte {
 
 		} else {
 			quot, num = num.Div(num, power)
-			bytes[loc] = zToHex(quot)
+			bytes[loc] = ZToHex(quot)
 		}
 
 		index.Sub(index, one)
@@ -121,7 +145,7 @@ func Pad(bytes []byte, s int) []byte {
 	return b
 }
 
-func zToHex(z *big.Int) byte {
+func ZToHex(z *big.Int) byte {
 	var b byte
 
 	if len(z.Bytes()) > 0 {
@@ -133,6 +157,16 @@ func zToHex(z *big.Int) byte {
 	}
 
 	return b + '0'
+}
+
+func HexToBytes(hex []byte) []byte {
+	b := make([]byte, len(hex))
+
+	for i := range hex {
+		b[i] = hexByteToByte(hex[i])
+	}
+
+	return b
 }
 
 func TrimLeft(bytes []byte) []byte {
@@ -157,4 +191,95 @@ func CeilingDiv(x *big.Int, y *big.Int) *big.Int {
 	}
 
 	return z
+}
+
+func SplitBytes(b []byte, s byte) ([]byte, []byte) {
+	i := 0
+
+	for b[i] != s {
+		i++
+
+		if i == len(b) {
+			return b, nil
+		}
+	}
+
+	return b[0:i], b[i+1 : len(b)]
+}
+
+func XOR(x []byte, y []byte) []byte {
+	var cpy int
+	var size int
+
+	var xstart int
+	var ystart int
+
+	var z []byte
+
+	if len(x) > len(y) {
+		size = len(x)
+		cpy = len(x) - len(y)
+		ystart = cpy
+		z = make([]byte, size)
+		for i := 0; i < cpy; i++ {
+			z[i] = x[i]
+		}
+	} else {
+		size = len(y)
+		cpy = len(y) - len(x)
+		xstart = cpy
+		z = make([]byte, size)
+		for i := 0; i < cpy; i++ {
+			z[i] = y[i]
+		}
+	}
+
+	//fmt.Printf(">>%d\n", size)
+	//fmt.Printf(">>%d\n", len(x))
+	//fmt.Printf(">>%d\n", len(y))
+	//fmt.Printf(">>%d\n", cpy)
+
+	for i := cpy; i < size; i++ {
+		z[i] = x[i-xstart] ^ y[i-ystart]
+	}
+
+	return z
+}
+
+func Find(x []byte, s byte, start int) (index int, split []byte) {
+	for i, b := range x {
+		if i >= start && b == s {
+			return i, x[s:len(x)]
+		}
+	}
+
+	return -1, nil
+}
+
+func hexByteToByte(b byte) byte {
+	if b >= 'A' {
+		return b - 15
+	}
+
+	return b - 48
+}
+
+func HexToOct(hex []byte) []byte {
+	var b []byte
+	if len(hex)%2 == 0 {
+		b = make([]byte, len(hex)/2)
+		for i := 0; i < len(hex)/2; i++ {
+			b[i] = hex[i] * 16
+			b[i] += hex[i+1]
+		}
+	} else {
+		b = make([]byte, (len(hex)+1)/2)
+		b[0] = hexByteToByte(hex[0])
+		for i := 1; i < len(hex)/2; i++ {
+			b[i] = hex[i] * 16
+			b[i] += hex[i+1]
+		}
+	}
+
+	return b
 }
