@@ -13,7 +13,7 @@ oaep:
 	./build.sh pkg/utils.go pkg/montgomery.go pkg/file.go pkg/oaep_c.go pkg/command.go oaep/attack.go
 
 time: time/attack.go
-	./build.sh pkg/utils.go pkg/montgomery.go test/mont_test.go
+	#./build.sh pkg/utils.go pkg/montgomery.go test/mont_test.go
 	./build.sh pkg/utils.go pkg/montgomery.go pkg/file.go pkg/time_c.go pkg/command.go time/attack.go
 
 clean:

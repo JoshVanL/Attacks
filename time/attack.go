@@ -53,8 +53,8 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
-	f := a.mnt.Mul(a.conf.E, a.conf.N)
-	fmt.Printf("%s\n", f.String())
+	//f := a.mnt.Mul(a.conf.E, a.conf.N)
+	//fmt.Printf("%s\n", f.String())
 
 	//N := new(big.Int).SetBytes([]byte{255, 0, 0, 0, 0, 0, 0, 0})
 

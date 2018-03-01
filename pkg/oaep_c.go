@@ -4,7 +4,7 @@ import (
 	"big"
 	"bytes"
 	"crypto/sha1"
-	//"fmt"
+	"fmt"
 	"math"
 	"os"
 
@@ -71,13 +71,20 @@ func NewConf(fileName string) (*Conf, os.Error) {
 }
 
 func (c *Conf) RSAf(f *big.Int) *big.Int {
-	//z := new(big.Int).Exp(f, c.E, c.N)
+	z := new(big.Int).Exp(f, c.E, c.N)
 	//z.Mul(z, c.C)
 	//z = z.Mod(z, c.N)
 
-	z, _ := montgomery.MontgomeryExp(f, c.E, c.N)
+	fmt.Printf("%X\n", z.Bytes())
+	z, _ = c.m.MontgomeryExp(f, c.E)
+	fmt.Printf("%X\n", z.Bytes())
+	//z = c.m.Reduction(z)
+	//fmt.Printf("%X\n", z.Bytes())
 	z.Mul(z, c.C)
 	z = z.Mod(z, c.N)
+	fmt.Printf("%X\n", z.Bytes())
+	//fmt.Printf("")
+	os.Exit(1)
 
 	//fmt.Printf("%s\n", f.String())
 	//z := c.m.Exp(f, c.E)

@@ -54,7 +54,6 @@ func main() {
 	test2[0] = Test{big.NewInt(7), big.NewInt(10), big.NewInt(13), big.NewInt(4)}
 	test2[1] = Test{big.NewInt(2), big.NewInt(8), big.NewInt(9), big.NewInt(4)}
 	test2[2] = Test{big.NewInt(2), big.NewInt(54), big.NewInt(17), big.NewInt(13)}
-	fmt.Printf("%s\n", test2[0].answer)
 
 	for i, a := range test2 {
 		result, err := montgomery.MontgomeryExp(a.x, a.y, a.m)
