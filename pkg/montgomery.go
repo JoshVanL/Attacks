@@ -39,6 +39,221 @@ func Omega(N *big.Int) uint64 {
 	return -getLimb(o, 0)
 }
 
+func Ro(N *big.Int) *big.Int {
+	b := big.NewInt(2)
+	n := N.Len()
+
+	return new(big.Int).Exp(b, big.NewInt(int64(n)), nil)
+}
+
+func Reduction(m, t *big.Int) *big.Int {
+
+	b := big.NewInt(2)
+	n := m.Len()
+
+	R := new(big.Int).Exp(b, big.NewInt(int64(n)), nil)
+
+	nm := new(big.Int).Neg(m)
+	if nm.Cmp(big.NewInt(0)) < 0 {
+		nm.Add(nm, R)
+	}
+	nm = nm.Mod(nm, R)
+	mp := ModInverse(nm, R)
+
+	A := new(big.Int).Set(t)
+
+	ui := mp.Mod(mp, b)
+	ui = ui.Mul(ui, m)
+	bi := new(big.Int)
+	for i := 0; i < n; i++ {
+		ai := bit(A, i)
+		if ai == 1 {
+			bi = bi.Exp(b, big.NewInt(int64(i)), nil)
+			ad := new(big.Int).Mul(ui, bi)
+			A = A.Add(A, ad)
+		}
+	}
+
+	r := new(big.Int).Rsh(A, n)
+	if cmp := r.Cmp(m); cmp == 0 || cmp == 1 {
+		r = r.Sub(r, m)
+	}
+
+	return r
+
+}
+
+func ModInverse(g, n *big.Int) *big.Int {
+	z := new(big.Int)
+
+	if g.Cmp(big.NewInt(0)) < 0 {
+		// GCD expects parameters a and b to be > 0.
+		g2 := new(big.Int)
+		g = g2.Mod(g, n)
+	}
+	d := new(big.Int)
+	big.GcdInt(d, z, nil, g, n)
+	// x and y are such that g*x + n*y = d. Since g and n are
+	// relatively prime, d = 1. Taking that modulo n results in
+	// g*x = 1, therefore x is the inverse element.
+	if z.Cmp(big.NewInt(0)) < 0 {
+		z.Add(z, n)
+	}
+	return z
+}
+
+func MontgomeryMul(x, y, m *big.Int) (*big.Int, int) {
+
+	if x.Cmp(m) == 1 || y.Cmp(m) == 1 {
+		return x, -1
+	}
+
+	b := big.NewInt(2)
+	n := m.Len()
+
+	R := new(big.Int).Exp(b, big.NewInt(int64(n)), nil)
+
+	nm := new(big.Int).Neg(m)
+	if nm.Cmp(big.NewInt(0)) < 0 {
+		nm.Add(nm, R)
+	}
+	nm = nm.Mod(nm, R)
+	mp := ModInverse(nm, R)
+
+	A := big.NewInt(0)
+
+	ui := new(big.Int).Mod(mp, b)
+	ui = ui.Mul(ui, m)
+
+	y0 := big.NewInt(int64(bit(y, 0)))
+
+	for i := 0; i < n; i++ {
+
+		a0 := big.NewInt(int64(bit(A, 0)))
+		xi := big.NewInt(int64(bit(x, i)))
+		ui := new(big.Int).Mul(xi, y0)
+		ui.Add(ui, a0)
+		ui.Mul(ui, mp)
+		ui.Mod(ui, b)
+		ui.Mul(ui, m)
+
+		ad := new(big.Int).Mul(xi, y)
+		ad.Add(ad, ui)
+		ad.Add(ad, A)
+		a := new(big.Int).Rsh(ad, 1)
+		A = a
+	}
+
+	extra := 0
+	//The big bad "extra reduction" step :)
+	if A.Cmp(m) >= 0 {
+		A.Sub(A, m)
+		extra = 1
+	}
+	A = A.Mul(A, R)
+
+	A = A.Mod(A, m)
+
+	return A, extra
+}
+func montgomeryMul(x, y, m *big.Int) (*big.Int, int) {
+
+	if x.Cmp(m) == 1 || y.Cmp(m) == 1 {
+		return x, -1
+	}
+
+	b := big.NewInt(2)
+	n := m.Len()
+
+	R := new(big.Int).Exp(b, big.NewInt(int64(n)), nil)
+
+	nm := new(big.Int).Neg(m)
+	if nm.Cmp(big.NewInt(0)) < 0 {
+		nm.Add(nm, R)
+	}
+	nm = nm.Mod(nm, R)
+	mp := ModInverse(nm, R)
+
+	A := big.NewInt(0)
+
+	ui := new(big.Int).Mod(mp, b)
+	ui = ui.Mul(ui, m)
+
+	y0 := big.NewInt(int64(bit(y, 0)))
+
+	for i := 0; i < n; i++ {
+
+		a0 := big.NewInt(int64(bit(A, 0)))
+		xi := big.NewInt(int64(bit(x, i)))
+		ui := new(big.Int).Mul(xi, y0)
+		ui.Add(ui, a0)
+		ui.Mul(ui, mp)
+		ui.Mod(ui, b)
+		ui.Mul(ui, m)
+
+		ad := new(big.Int).Mul(xi, y)
+		ad.Add(ad, ui)
+		ad.Add(ad, A)
+		a := new(big.Int).Rsh(ad, 1)
+		A = a
+	}
+
+	extra := 0
+	//The big bad "extra reduction" step :)
+	if A.Cmp(m) >= 0 {
+		A.Sub(A, m)
+		extra = 1
+	}
+
+	return A, extra
+}
+
+func MontgomeryExp(x, e, m *big.Int) (*big.Int, int) {
+	if x.Cmp(m) == 1 {
+		return x, -1
+	}
+
+	b := big.NewInt(2)
+	n := m.Len()
+	R := new(big.Int).Exp(b, big.NewInt(int64(n)), nil)
+	R2 := new(big.Int).Exp(R, b, m)
+	A := R.Mod(R, m)
+	xs, _ := montgomeryMul(x, R2, m)
+
+	//extras tracks how many "extra reductions" where performed
+	//over the course of the exponentiation.
+	extras := 0
+	extra := 0
+	for i := e.Len(); i >= 0; i-- {
+		A, extra = montgomeryMul(A, A, m)
+		extras += extra
+		if bit(e, i) == 1 {
+			A, extra = montgomeryMul(A, xs, m)
+			extras += extra
+		}
+		extra = 0
+	}
+	A, extra = montgomeryMul(A, big.NewInt(1), m)
+
+	extras += extra
+
+	return A, extras
+}
+
+func bit(x *big.Int, i int) uint {
+	b := x.Bytes()
+	if len(b) == 0 {
+		return 0
+	}
+
+	if len(b) < (i/8)+1 {
+		return 0
+	}
+
+	n := uint64(b[len(b)-1-(i/8)])
+	return uint((n >> (uint(i % 8))) & 1)
+}
+
 func Ro2(N *big.Int) *big.Int {
 	//	ro2 := big.NewInt(1)
 	//
@@ -59,9 +274,8 @@ func Ro2(N *big.Int) *big.Int {
 	//}
 
 	//ro :=
-	t := :
 
-	return b
+	return nil
 }
 
 func (m *Montgomery) Red(z *big.Int) *big.Int {

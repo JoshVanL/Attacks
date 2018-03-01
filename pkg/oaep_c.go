@@ -2,15 +2,15 @@ package oaep_c
 
 import (
 	"big"
-	"os"
-	"math"
 	"bytes"
-	"fmt"
 	"crypto/sha1"
+	//"fmt"
+	"math"
+	"os"
 
-	"./utils"
 	"./file"
 	"./montgomery"
+	"./utils"
 )
 
 const (
@@ -75,12 +75,16 @@ func (c *Conf) RSAf(f *big.Int) *big.Int {
 	//z.Mul(z, c.C)
 	//z = z.Mod(z, c.N)
 
-	fmt.Printf("%s\n", f.String())
-	z := c.m.Exp(f, c.E)
-	fmt.Printf("%s\n", z.String())
-	z = c.m.Red(z)
-	fmt.Printf("%s\n", z.String())
-	os.Exit(1)
+	z, _ := montgomery.MontgomeryExp(f, c.E, c.N)
+	z.Mul(z, c.C)
+	z = z.Mod(z, c.N)
+
+	//fmt.Printf("%s\n", f.String())
+	//z := c.m.Exp(f, c.E)
+	//fmt.Printf("%s\n", z.String())
+	//z = c.m.Red(z)
+	//fmt.Printf("%s\n", z.String())
+	//os.Exit(1)
 
 	return z
 }

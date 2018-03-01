@@ -233,7 +233,6 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	if err != nil {
 		return nil, utils.Error("error calculating dbMask", err)
 	}
-
 	DB := utils.XOR(maskedDB, dbMask)
 
 	indexM := bytes.IndexByte(DB, 1)
@@ -252,7 +251,7 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	}
 
 	if !bytes.Equal(hash.Sum(), DB[0:hLen]) {
-		return nil, utils.NewError("label hash and resulting hash are different")
+		return nil, utils.NewError("label and resulting hash are different")
 	}
 	fmt.Printf("done.\n")
 
@@ -300,9 +299,9 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 	fmt.Printf("done.\n")
-	fmt.Printf("EM: [%X]\n", em.Bytes())
+	//fmt.Printf("EM: [%X]\n", em.Bytes())
 
-	fmt.Printf("Calculating message...")
+	fmt.Printf("Decoding EM...")
 	M, err := a.EME_OAEP_Decode(em)
 	if err != nil {
 		return utils.Error("decoding error", err)
