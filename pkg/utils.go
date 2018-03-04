@@ -62,6 +62,7 @@ func AppendByte(slice []byte, elem byte) []byte {
 	return fresh
 }
 
+
 func AppendByteSlice(slice []byte, elems []byte) []byte {
 	fresh := make([]byte, len(slice))
 	copy(fresh, slice)
@@ -70,6 +71,19 @@ func AppendByteSlice(slice []byte, elems []byte) []byte {
 		fresh = AppendByte(fresh, elem)
 	}
 
+	return fresh
+}
+
+func AppendBigInt(slice []*big.Int, elem *big.Int) []*big.Int {
+	if len(slice) < cap(slice) {
+		slice = slice[0 : len(slice)+1]
+		slice[len(slice)-1] = elem
+		return slice
+	}
+
+	fresh := make([]*big.Int, len(slice)+1, cap(slice)*2+1)
+	copy(fresh, slice)
+	fresh[len(slice)] = elem
 	return fresh
 }
 
@@ -253,6 +267,16 @@ func RandInt(N *big.Int) *big.Int {
 
 	z := new(big.Int).SetBytes(b)
 	z.Mod(z, N)
+
+	return z
+}
+
+func SumBytes(bytes [][]byte) *big.Int {
+	z := new(big.Int)
+	for _, b := range bytes {
+		n := new(big.Int).SetBytes(b)
+		z.Add(z, n)
+	}
 
 	return z
 }

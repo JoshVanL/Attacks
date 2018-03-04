@@ -23,9 +23,11 @@ type Attack struct {
 
 	interactions int
 
-	samples []*Sample
-	mnt     *montgomery.Montgomery
-	d       *big.Int
+	samples      []*Sample
+	mnt          *montgomery.Montgomery
+	d            *big.Int
+	test_message *big.Int
+	c            *big.Int
 }
 
 type Sample struct {
@@ -57,6 +59,8 @@ func NewAttack() (attack *Attack, err os.Error) {
 		interactions: 0,
 		mnt: montgomery.NewMontgomery(conf.N),
 		d: big.NewInt(1),
+		test_message: new(big.Int),
+		c: new(big.Int),
 	},
 		nil
 }
@@ -115,13 +119,94 @@ func (a *Attack) generate_samples() os.Error {
 			return utils.Error("error interacting with program", err)
 		}
 
+		a.c = c
+
 		a.samples[i] = &Sample{
 			time: time,
 			message: message,
 			mont: mnt,
 			curr: curr,
 		}
+
+		a.test_message.SetBytes(message)
 	}
+
+	return nil
+}
+
+func (a *Attack) find_key() os.Error {
+	//for new(big.Int).Exp(a.c, a.d, a.conf.N).Cmp(a.test_message) != 0 {
+	n := 1
+	var c_0 []*big.Int
+	var c_1 []*big.Int
+	var bit0_red [][]byte
+	var bit0_nored [][]byte
+	var bit1_red [][]byte
+	var bit1_nored [][]byte
+
+	for n < 64 {
+		fmt.Printf("\rGuessing bit [%d]...", n)
+		for _, s := range a.samples {
+			ci_0, _ := a.mnt.Mul(s.curr, s.curr)
+			c_0 = utils.AppendBigInt(c_0, ci_0)
+			ci_0, red0 := a.mnt.Mul(ci_0, ci_0)
+
+			if red0 {
+				bit0_red = utils.AppendBytes(bit0_red, s.time)
+			} else {
+				bit0_nored = utils.AppendBytes(bit0_nored, s.time)
+			}
+
+			ci_1, _ := a.mnt.Mul(s.curr, s.curr)
+			ci_1, _ = a.mnt.Mul(ci_1, s.mont)
+			c_1 = utils.AppendBigInt(c_1, ci_1)
+			ci_1, red1 := a.mnt.Mul(ci_1, ci_1)
+			if red1 {
+				bit1_red = utils.AppendBytes(bit1_red, s.time)
+			} else {
+				bit1_nored = utils.AppendBytes(bit1_nored, s.time)
+			}
+		}
+
+		mean_bit0_red := utils.SumBytes(bit0_red)
+		mean_bit0_red, _ = mean_bit0_red.Div(mean_bit0_red, big.NewInt(int64(len(bit0_red))))
+		mean_bit0_nored := utils.SumBytes(bit0_nored)
+		mean_bit0_nored, _ = mean_bit0_nored.Div(mean_bit0_nored, big.NewInt(int64(len(bit0_nored))))
+
+		mean_bit1_red := utils.SumBytes(bit1_red)
+		mean_bit1_red, _ = mean_bit1_red.Div(mean_bit1_red, big.NewInt(int64(len(bit1_red))))
+		mean_bit1_nored := utils.SumBytes(bit1_nored)
+		mean_bit1_nored, _ = mean_bit1_nored.Div(mean_bit1_nored, big.NewInt(int64(len(bit1_nored))))
+
+		diff_0 := new(big.Int).Sub(mean_bit0_red, mean_bit0_nored)
+		diff_1 := new(big.Int).Sub(mean_bit1_red, mean_bit1_nored)
+		if diff_0.Cmp(diff_1) > 0 {
+			a.d.Mul(a.d, big.NewInt(2))
+			for i := range a.samples {
+				a.samples[i].curr = c_0[i]
+			}
+			n += 1
+		} else if diff_1.Cmp(diff_0) > 0 {
+			a.d.Mul(a.d, big.NewInt(2))
+			a.d.Add(a.d, big.NewInt(1))
+			for i := range a.samples {
+				a.samples[i].curr = c_1[i]
+			}
+			n += 1
+		} else {
+			panic("cant distinguish!")
+		}
+
+		if new(big.Int).Exp(a.c, new(big.Int).Mul(a.d, big.NewInt(2)), a.conf.N).Cmp(a.test_message) == 0 {
+			a.d.Mul(a.d, big.NewInt(2))
+			break
+		} else if new(big.Int).Exp(a.c, new(big.Int).Add(new(big.Int).Mul(a.d, big.NewInt(2)), big.NewInt(1)), a.conf.N).Cmp(a.test_message) == 0 {
+			a.d.Mul(a.d, big.NewInt(2))
+			a.d.Add(a.d, big.NewInt(1))
+			break
+		}
+	}
+	//}
 
 	return nil
 }
@@ -137,33 +222,13 @@ func (a *Attack) Run() os.Error {
 	}
 	fmt.Printf("done.\n")
 
-	//f := a.mnt.Mul(a.conf.E, a.conf.N)
-	//fmt.Printf("%s\n", f.String())
+	fmt.Printf("Finding key...\n")
+	if err := a.find_key(); err != nil {
+		return utils.Error("error finding key", err)
+	}
+	fmt.Printf("done.\n")
 
-	//N := new(big.Int).SetBytes([]byte{255, 0, 0, 0, 0, 0, 0, 0})
-
-	//c := big.NewInt(2)
-
-	//for {
-	//	n := utils.Pad(utils.IntToHex(c), WORD_LENGTH)
-
-	//	if err := a.cmd.WriteStdin(n); err != nil {
-	//		return utils.Error("failed to write cipher", err)
-	//	}
-
-	//	b, err := a.cmd.ReadStdout()
-	//	if err != nil {
-	//		return utils.Error("failed to read message", err)
-	//	}
-
-	//	m, t := utils.SplitBytes(b, '\n')
-	//	t, _ = utils.SplitBytes(t, '\n')
-	//	fmt.Printf("cipher:  %s", string(n))
-	//	fmt.Printf("message: %s\n", string(m))
-	//	fmt.Printf("time:    %s\n", string(t))
-
-	//	c.Mul(c, c)
-	//}
+	fmt.Printf("Key: [%X]\n", a.d.Bytes())
 
 	return nil
 }
