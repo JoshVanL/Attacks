@@ -44,7 +44,7 @@ func (c *Command) WriteStdin(b []byte) os.Error {
 }
 
 func (c *Command) ReadStdout() ([]byte, os.Error) {
-	b := make([]byte, 1024)
+	b := make([]byte, 2048)
 
 	if _, err := c.cmd.Stdout.Read(b); err != nil {
 		return nil, utils.Error("error reading command stdout", err)

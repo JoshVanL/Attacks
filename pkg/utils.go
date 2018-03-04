@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"big"
+	"rand"
 	"os"
 )
 
@@ -242,4 +243,16 @@ func HexToOct(hex []byte) []byte {
 	}
 
 	return b
+}
+
+func RandInt(N *big.Int) *big.Int {
+	b := make([]byte, len(N.Bytes()))
+	for i := range b {
+		b[i] = byte(rand.Intn(256))
+	}
+
+	z := new(big.Int).SetBytes(b)
+	z.Mod(z, N)
+
+	return z
 }

@@ -15,7 +15,7 @@ type Montgomery struct {
 	n   *big.Int
 	o   *big.Int
 	ro  *big.Int
-	ro2 *big.Int
+	Ro2 *big.Int
 }
 
 func NewMontgomery(N *big.Int) *Montgomery {
@@ -24,7 +24,7 @@ func NewMontgomery(N *big.Int) *Montgomery {
 	m := &Montgomery{
 		n: N,
 		ro: R,
-		ro2: R2,
+		Ro2: R2,
 		o: Omega(N),
 	}
 
@@ -103,8 +103,8 @@ func (m *Montgomery) Red(z *big.Int) *big.Int {
 	return r
 }
 
-func (m *Montgomery) Mul(x, y *big.Int) *big.Int {
-	r := big.NewInt(0)
+func (m *Montgomery) Mul(x, y *big.Int) (r *big.Int, red bool) {
+	r = big.NewInt(0)
 
 	for i := 0; i < ceilDiv(len(m.n.Bytes()), BYTES_PER_LIMB); i++ {
 		ui := new(big.Int).Mul(getLimb(y, i), getLimb(x, 0))
@@ -126,25 +126,27 @@ func (m *Montgomery) Mul(x, y *big.Int) *big.Int {
 		r.SetBytes(b)
 	}
 
+	red = false
 	if r.Cmp(m.n) >= 0 {
 		r.Sub(r, m.n)
+		red = true
 	}
 
-	return r
+	return r, red
 }
 
 func (m *Montgomery) Exp(x, y *big.Int) *big.Int {
-	t_hat := m.Mul(big.NewInt(1), m.ro2)
-	x_hat := m.Mul(x, m.ro2)
+	t_hat, _ := m.Mul(big.NewInt(1), m.Ro2)
+	x_hat, _ := m.Mul(x, m.Ro2)
 
-	x0 := m.Mul(x_hat, x_hat)
+	x0, _ := m.Mul(x_hat, x_hat)
 
 	T := make([]*big.Int, 32)
 	T[0] = new(big.Int)
 	T[0].Set(x_hat)
 	for i := 1; i < 32; i++ {
 		T[i] = new(big.Int)
-		T[i] = m.Mul(T[i-1], x0)
+		T[i], _ = m.Mul(T[i-1], x0)
 	}
 
 	i := (len(y.Bytes()) * BYTES_PER_LIMB) - 1
@@ -181,10 +183,10 @@ func (m *Montgomery) Exp(x, y *big.Int) *big.Int {
 		}
 
 		for j := 0; j < i-l+1; j++ {
-			t_hat = m.Mul(t_hat, t_hat)
+			t_hat, _ = m.Mul(t_hat, t_hat)
 		}
 		if u != 0 {
-			t_hat = m.Mul(t_hat, T[(u-1)/2])
+			t_hat, _ = m.Mul(t_hat, T[(u-1)/2])
 		}
 
 		i = l - 1
@@ -206,7 +208,16 @@ func max(x, y int) int {
 func concatonate(x, y uint64) uint64 { return x | y }
 
 func getWord(x *big.Int, start, end int) uint64 {
-	u := binary.BigEndian.Uint64(x.Bytes())
+	b := x.Bytes()
+	if len(b) < 8 {
+		tmp := make([]byte, 8)
+		for i := 0; i < len(b); i++ {
+			tmp[i+8-len(b)] = b[i]
+		}
+		b = tmp
+	}
+
+	u := binary.BigEndian.Uint64(b)
 
 	return (u << (uint(LIMB_SIZE - 1 - end))) >> (uint(LIMB_SIZE - 1 - end + start))
 }
