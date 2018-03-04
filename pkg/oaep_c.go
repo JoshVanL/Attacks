@@ -4,12 +4,11 @@ import (
 	"big"
 	"bytes"
 	"crypto/sha1"
-	"fmt"
+	//"fmt"
 	"math"
 	"os"
 
 	"./file"
-	"./montgomery"
 	"./utils"
 )
 
@@ -25,8 +24,6 @@ type Conf struct {
 
 	K *big.Int
 	B *big.Int
-
-	m *montgomery.Montgomery
 }
 
 func NewConf(fileName string) (*Conf, os.Error) {
@@ -65,34 +62,14 @@ func NewConf(fileName string) (*Conf, os.Error) {
 	conf.B.Mul(conf.B, big.NewInt(8))
 	conf.B.Exp(big.NewInt(2), conf.B, nil)
 
-	conf.m = montgomery.NewMontgomery(conf.N)
-
 	return conf, nil
 }
 
 func (c *Conf) RSAf(f *big.Int) *big.Int {
 	z := new(big.Int).Exp(f, c.E, c.N)
-	//z.Mul(z, c.C)
-	//z = z.Mod(z, c.N)
-	os.Exit(1)
 
-	fmt.Printf("%X\n", z.Bytes())
-	z, _ = c.m.MontgomeryExp(f, c.E)
-	fmt.Printf("%X\n", z.Bytes())
-	//z = c.m.Reduction(z)
-	//fmt.Printf("%X\n", z.Bytes())
 	z.Mul(z, c.C)
 	z = z.Mod(z, c.N)
-	fmt.Printf("%X\n", z.Bytes())
-	//fmt.Printf("")
-	os.Exit(1)
-
-	//fmt.Printf("%s\n", f.String())
-	//z := c.m.Exp(f, c.E)
-	//fmt.Printf("%s\n", z.String())
-	//z = c.m.Red(z)
-	//fmt.Printf("%s\n", z.String())
-	//os.Exit(1)
 
 	return z
 }
