@@ -74,6 +74,7 @@ func (c *Conf) RSAf(f *big.Int) *big.Int {
 	z := new(big.Int).Exp(f, c.E, c.N)
 	//z.Mul(z, c.C)
 	//z = z.Mod(z, c.N)
+	os.Exit(1)
 
 	fmt.Printf("%X\n", z.Bytes())
 	z, _ = c.m.MontgomeryExp(f, c.E)
