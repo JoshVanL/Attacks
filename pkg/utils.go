@@ -262,7 +262,7 @@ func HexToOct(hex []byte) []byte {
 func RandInt(N *big.Int) *big.Int {
 	b := make([]byte, len(N.Bytes()))
 	for i := range b {
-		b[i] = byte(rand.Intn(256))
+		b[i] = byte(rand.Intn(255))
 	}
 
 	z := new(big.Int).SetBytes(b)
@@ -271,12 +271,17 @@ func RandInt(N *big.Int) *big.Int {
 	return z
 }
 
-func SumBytes(bytes [][]byte) *big.Int {
+func SumBytes(bytes [][]byte) (*big.Int, os.Error) {
 	z := new(big.Int)
-	for _, b := range bytes {
-		n := new(big.Int).SetBytes(b)
+	for i := range bytes {
+		n := new(big.Int)
+		_, ok := n.SetString(string(bytes[i]), 10)
+		if !ok {
+			return nil, os.NewError("failed to convert conf value to hex string")
+		}
+
 		z.Add(z, n)
 	}
 
-	return z
+	return z, nil
 }

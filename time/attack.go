@@ -85,7 +85,7 @@ func (a *Attack) Read() (m []byte, t []byte, err os.Error) {
 		return nil, nil, utils.NewError(fmt.Sprintf("got unexpected number of splits from read. exp=3 got=%d\n", len(split)))
 	}
 
-	return split[1], split[0], nil
+	return split[0], split[1], nil
 }
 
 func (a *Attack) Interact(c *big.Int) (m []byte, t []byte, err os.Error) {
@@ -119,6 +119,9 @@ func (a *Attack) generate_samples() os.Error {
 			return utils.Error("error interacting with program", err)
 		}
 
+		//fmt.Printf("message: %s\n", message)
+		//fmt.Printf("time: %s\n", time)
+
 		a.c = c
 
 		a.samples[i] = &Sample{
@@ -137,14 +140,14 @@ func (a *Attack) generate_samples() os.Error {
 func (a *Attack) find_key() os.Error {
 	//for new(big.Int).Exp(a.c, a.d, a.conf.N).Cmp(a.test_message) != 0 {
 	n := 1
-	var c_0 []*big.Int
-	var c_1 []*big.Int
-	var bit0_red [][]byte
-	var bit0_nored [][]byte
-	var bit1_red [][]byte
-	var bit1_nored [][]byte
-
 	for n < 64 {
+		var c_0 []*big.Int
+		var c_1 []*big.Int
+		var bit0_red [][]byte
+		var bit0_nored [][]byte
+		var bit1_red [][]byte
+		var bit1_nored [][]byte
+
 		fmt.Printf("\rGuessing bit [%d]...", n)
 		for _, s := range a.samples {
 			ci_0, _ := a.mnt.Mul(s.curr, s.curr)
@@ -168,18 +171,47 @@ func (a *Attack) find_key() os.Error {
 			}
 		}
 
-		mean_bit0_red := utils.SumBytes(bit0_red)
+		//for _, b := range bit0_red {
+		//	fmt.Printf("%s\n", b)
+		//}
+		//for _, r := range bit0_red {
+		//	fmt.Printf("bit0_red: %s\n", r)
+		//}
+
+		mean_bit0_red, err := utils.SumBytes(bit0_red)
+		if err != nil {
+			return err
+		}
+		//fmt.Printf("%s\n", mean_bit0_red)
+		//fmt.Printf("time: %s\n", a.samples[0].time)
+		//os.Exit(1)
+		//fmt.Printf("sum1: %s\n", mean_bit0_red)
+		//fmt.Printf("sum1: %s\n", mean_bit0_red)
 		mean_bit0_red, _ = mean_bit0_red.Div(mean_bit0_red, big.NewInt(int64(len(bit0_red))))
-		mean_bit0_nored := utils.SumBytes(bit0_nored)
+		//fmt.Printf("len: %d\n", len(bit0_red))
+		mean_bit0_nored, err := utils.SumBytes(bit0_nored)
+		if err != nil {
+			return err
+		}
 		mean_bit0_nored, _ = mean_bit0_nored.Div(mean_bit0_nored, big.NewInt(int64(len(bit0_nored))))
 
-		mean_bit1_red := utils.SumBytes(bit1_red)
+		mean_bit1_red, err := utils.SumBytes(bit1_red)
+		if err != nil {
+			return err
+		}
 		mean_bit1_red, _ = mean_bit1_red.Div(mean_bit1_red, big.NewInt(int64(len(bit1_red))))
-		mean_bit1_nored := utils.SumBytes(bit1_nored)
+		mean_bit1_nored, err := utils.SumBytes(bit1_nored)
+		if err != nil {
+			return err
+		}
 		mean_bit1_nored, _ = mean_bit1_nored.Div(mean_bit1_nored, big.NewInt(int64(len(bit1_nored))))
+
+		//fmt.Printf("sum1: %s\n", mean_bit0_red)
+		//fmt.Printf("sum2: %s\n", mean_bit1_red)
 
 		diff_0 := new(big.Int).Sub(mean_bit0_red, mean_bit0_nored)
 		diff_1 := new(big.Int).Sub(mean_bit1_red, mean_bit1_nored)
+
 		if diff_0.Cmp(diff_1) > 0 {
 			a.d.Mul(a.d, big.NewInt(2))
 			for i := range a.samples {
