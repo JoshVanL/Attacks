@@ -314,3 +314,18 @@ func BinaryStringToInt(str string) *big.Int {
 
 	return z
 }
+
+func Average(zs []*big.Int) *big.Int {
+	if len(zs) == 0 {
+		return big.NewInt(0)
+	}
+
+	z := new(big.Int)
+	for _, n := range zs {
+		z.Add(z, n)
+	}
+
+	z, _ = z.Div(z, big.NewInt(int64(len(zs))))
+
+	return z
+}
