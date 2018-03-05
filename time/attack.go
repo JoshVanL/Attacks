@@ -32,7 +32,9 @@ type Attack struct {
 type Samples struct {
 	xList    []*big.Int
 	tList    []*big.Int
+	cList    []*big.Int
 	timeList []*big.Int
+	messages []*big.Int
 }
 
 func NewAttack() (attack *Attack, err os.Error) {
@@ -120,6 +122,7 @@ func (a *Attack) generate_samples(samplesN int) os.Error {
 		if err != nil {
 			return utils.Error("error interacting for samples", err)
 		}
+		samples.cList = utils.AppendBigInt(samples.cList, c)
 		samples.timeList = utils.AppendBigInt(samples.timeList, tt)
 		xHat, _ := a.mnt.Mul(c, a.mnt.Ro2)
 		tTemp, _ := a.mnt.Mul(t, t)
@@ -138,7 +141,7 @@ func (a *Attack) generate_samples(samplesN int) os.Error {
 func (a *Attack) find_key() (*big.Int, os.Error) {
 	samplesN := INIT_SAMPLES
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 30; i++ {
 		d, found, err := a.try_samples(samplesN)
 		if err != nil {
 			return nil, err
@@ -156,14 +159,13 @@ func (a *Attack) find_key() (*big.Int, os.Error) {
 
 	}
 
-	return nil, utils.NewError("failed after 10 sets of samples, giving up.")
+	return nil, utils.NewError("failed after 30 sets of samples, giving up.")
 }
 
 func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) {
 	var diff *big.Int
 	d = "1"
 	kSize := 1
-	one := big.NewInt(1)
 
 	test_message := big.NewInt(12345)
 	test_cipher := new(big.Int).Exp(test_message, a.conf.E, a.conf.N)
@@ -172,10 +174,11 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 
 	for {
 		kSize++
-		var b0_red []*big.Int
-		var b0_nored []*big.Int
-		var b1_red []*big.Int
-		var b1_nored []*big.Int
+		var bit0_red []*big.Int
+		var bit0_nored []*big.Int
+		var bit1_red []*big.Int
+		var bit1_nored []*big.Int
+
 		var tList1 []*big.Int
 		var tList0 []*big.Int
 
@@ -186,52 +189,53 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 
 			tTemp, _ := a.mnt.Mul(t, t)
 			t1, _ := a.mnt.Mul(tTemp, xHat)
+			tList1 = utils.AppendBigInt(tList1, t1)
+			_, red1 := a.mnt.Mul(t1, t1)
 
 			tList0 = utils.AppendBigInt(tList0, tTemp)
 			_, red0 := a.mnt.Mul(tTemp, tTemp)
 
-			tList1 = utils.AppendBigInt(tList1, t1)
-			_, red1 := a.mnt.Mul(t1, t1)
-
 			if red0 {
-				b0_red = utils.AppendBigInt(b0_red, tt)
+				bit0_red = utils.AppendBigInt(bit0_red, tt)
 			} else {
-				b0_nored = utils.AppendBigInt(b0_nored, tt)
+				bit0_nored = utils.AppendBigInt(bit0_nored, tt)
 			}
+
 			if red1 {
-				b1_red = utils.AppendBigInt(b1_red, tt)
+				bit1_red = utils.AppendBigInt(bit1_red, tt)
 			} else {
-				b1_nored = utils.AppendBigInt(b1_nored, tt)
+				bit1_nored = utils.AppendBigInt(bit1_nored, tt)
 			}
 		}
-		b0_diff := new(big.Int).Sub(utils.Average(b0_red), utils.Average(b0_nored))
-		b1_diff := new(big.Int).Sub(utils.Average(b1_red), utils.Average(b1_nored))
 
-		if b0_diff.Cmp(b1_diff) > 0 {
+		diff0 := new(big.Int).Sub(utils.Average(bit0_red), utils.Average(bit0_nored))
+		diff1 := new(big.Int).Sub(utils.Average(bit1_red), utils.Average(bit1_nored))
+
+		if diff0.Cmp(diff1) > 0 {
 			d = fmt.Sprintf("%s0", d)
-			a.printProgess(kSize, b0_diff, d)
+			a.printProgess(kSize, diff0, d)
 			a.samples.tList = tList0
-			diff = b0_diff
+			diff = diff0
 		} else {
 			d = fmt.Sprintf("%s1", d)
-			a.printProgess(kSize, b1_diff, d)
+			a.printProgess(kSize, diff1, d)
 			a.samples.tList = tList1
-			diff = b1_diff
+			diff = diff1
 		}
 
-		kMaybe1 := utils.BinaryStringToInt(fmt.Sprintf("%s1", d))
-		if new(big.Int).Exp(test_cipher, kMaybe1, a.conf.N).Cmp(test_message) == 0 {
+		k1 := utils.BinaryStringToInt(fmt.Sprintf("%s1", d))
+		if new(big.Int).Exp(test_cipher, k1, a.conf.N).Cmp(test_message) == 0 {
 			d = fmt.Sprintf("%s1", d)
 			return d, true, nil
 		}
 
-		kMaybe0 := utils.BinaryStringToInt(fmt.Sprintf("%s0", d))
-		if new(big.Int).Exp(test_cipher, kMaybe0, a.conf.N).Cmp(test_message) == 0 {
+		k0 := utils.BinaryStringToInt(fmt.Sprintf("%s0", d))
+		if new(big.Int).Exp(test_cipher, k0, a.conf.N).Cmp(test_message) == 0 {
 			d = fmt.Sprintf("%s0", d)
 			return d, true, nil
 		}
 
-		if diff.Cmp(one) < 0 {
+		if diff.Cmp(big.NewInt(2)) < 0 {
 			return "", false, nil
 		}
 		//92319c502a2f137
