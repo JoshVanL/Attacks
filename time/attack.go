@@ -16,7 +16,7 @@ import (
 
 const (
 	WORD_LENGTH  = 256
-	INIT_SAMPLES = 2000
+	INIT_SAMPLES = 2500
 )
 
 type Attack struct {
@@ -179,21 +179,21 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 		var bit1_red []*big.Int
 		var bit1_nored []*big.Int
 
-		var tList1 []*big.Int
-		var tList0 []*big.Int
+		tList0 := make([]*big.Int, samplesN)
+		tList1 := make([]*big.Int, samplesN)
 
 		for i := 0; i < samplesN; i++ {
-			tt := a.samples.timeList[i]
-			xHat := a.samples.xList[i]
 			t := a.samples.tList[i]
+			tt := a.samples.timeList[i]
 
-			tTemp, _ := a.mnt.Mul(t, t)
-			t1, _ := a.mnt.Mul(tTemp, xHat)
-			tList1 = utils.AppendBigInt(tList1, t1)
+			t0, _ := a.mnt.Mul(t, t)
+			tList0[i] = t0
+
+			t1, _ := a.mnt.Mul(t0, a.samples.xList[i])
+			tList1[i] = t1
+
+			_, red0 := a.mnt.Mul(t0, t0)
 			_, red1 := a.mnt.Mul(t1, t1)
-
-			tList0 = utils.AppendBigInt(tList0, tTemp)
-			_, red0 := a.mnt.Mul(tTemp, tTemp)
 
 			if red0 {
 				bit0_red = utils.AppendBigInt(bit0_red, tt)

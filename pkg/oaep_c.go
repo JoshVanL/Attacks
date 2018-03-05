@@ -4,13 +4,11 @@ import (
 	"big"
 	"bytes"
 	"crypto/sha1"
-	//"fmt"
 	"math"
 	"os"
 
 	"./file"
 	"./utils"
-	"./montgomery"
 )
 
 const (
@@ -68,12 +66,6 @@ func NewConf(fileName string) (*Conf, os.Error) {
 
 func (c *Conf) RSAf(f *big.Int) *big.Int {
 	z := new(big.Int).Exp(f, c.E, c.N)
-	//fmt.Printf("%s\n", z)
-
-	m := montgomery.NewMontgomery(c.N)
-	z = m.Exp(f, c.E)
-	z = m.Red(z)
-	//fmt.Printf("%s\n", z)
 
 	z.Mul(z, c.C)
 	z = z.Mod(z, c.N)

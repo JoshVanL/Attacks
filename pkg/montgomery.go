@@ -14,7 +14,7 @@ const (
 type Montgomery struct {
 	n   *big.Int
 	o   *big.Int
-	ro  *big.Int
+	Ro  *big.Int
 	Ro2 *big.Int
 }
 
@@ -23,7 +23,7 @@ func NewMontgomery(N *big.Int) *Montgomery {
 
 	m := &Montgomery{
 		n: N,
-		ro: R,
+		Ro: R,
 		Ro2: R2,
 		o: Omega(N),
 	}
@@ -105,25 +105,26 @@ func (m *Montgomery) Red(z *big.Int) *big.Int {
 
 func (m *Montgomery) Mul(x, y *big.Int) (r *big.Int, red bool) {
 	r = big.NewInt(0)
+	x0 := getLimb(x, 0)
+
+	ui := new(big.Int)
+	yix := new(big.Int)
+	uiN := new(big.Int)
 
 	for i := 0; i < ceilDiv(len(m.n.Bytes()), BYTES_PER_LIMB); i++ {
-		ui := new(big.Int).Mul(getLimb(y, i), getLimb(x, 0))
-		ui = getLimb(ui, 0)
+		ui.Mul(getLimb(y, i), x0)
 		ui.Add(ui, getLimb(r, 0))
-		ui = getLimb(ui, 0)
 		ui.Mul(ui, m.o)
 		ui = getLimb(ui, 0)
 
-		yix := new(big.Int).Mul(x, getLimb(y, i))
-		uiN := new(big.Int).Mul(m.n, ui)
+		yix.Mul(x, getLimb(y, i))
+		uiN.Mul(m.n, ui)
 
 		r.Add(r, yix)
 		r.Add(r, uiN)
 
 		rBytes := r.Bytes()
-		b := make([]byte, len(rBytes)-BYTES_PER_LIMB)
-		b = rBytes[0:(len(rBytes) - BYTES_PER_LIMB)]
-		r.SetBytes(b)
+		r.SetBytes(rBytes[0:(len(rBytes) - BYTES_PER_LIMB)])
 	}
 
 	red = false
@@ -139,10 +140,10 @@ func (m *Montgomery) RedMul(x, y *big.Int) (r *big.Int, red bool) {
 	xy := new(big.Int).Mul(x, y)
 	r = new(big.Int)
 	r.Mul(xy, m.o)
-	r.Mod(r, m.ro)
+	r.Mod(r, m.Ro)
 	r.Mul(r, m.n)
 	r.Add(r, xy)
-	r, _ = new(big.Int).Div(r, m.ro)
+	r, _ = new(big.Int).Div(r, m.Ro)
 
 	red = false
 	if r.Cmp(m.n) >= 0 {
