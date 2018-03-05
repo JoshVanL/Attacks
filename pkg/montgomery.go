@@ -59,6 +59,7 @@ func Ro(N *big.Int) (R *big.Int, R2 *big.Int) {
 
 	R = new(big.Int).Exp(b, big.NewInt(int64(n)), nil)
 	R2 = new(big.Int).Exp(R, b, N)
+	R.Mod(R, N)
 
 	return R, R2
 }
@@ -125,6 +126,24 @@ func (m *Montgomery) Mul(x, y *big.Int) (r *big.Int, red bool) {
 		b = rBytes[0:(len(rBytes) - BYTES_PER_LIMB)]
 		r.SetBytes(b)
 	}
+
+	red = false
+	if r.Cmp(m.n) >= 0 {
+		r.Sub(r, m.n)
+		red = true
+	}
+
+	return r, red
+}
+
+func (m *Montgomery) RedMul(x, y *big.Int) (r *big.Int, red bool) {
+	xy := new(big.Int).Mul(x, y)
+	r = new(big.Int)
+	r.Mul(xy, m.o)
+	r.Mod(r, m.ro)
+	r.Mul(r, m.n)
+	r.Add(r, xy)
+	r, _ = new(big.Int).Div(r, m.ro)
 
 	red = false
 	if r.Cmp(m.n) >= 0 {
@@ -229,6 +248,9 @@ func getLimb(z *big.Int, s int) *big.Int {
 
 	if e > len(b) {
 		e = len(b)
+	}
+	if e < 0 {
+		e = 0
 	}
 	if s < 0 {
 		s = 0

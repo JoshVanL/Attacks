@@ -2,3 +2,5 @@
 attack
 test/mont_test
 test/oaep_test
+tt
+*.py
