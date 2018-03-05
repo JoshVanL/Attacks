@@ -59,7 +59,6 @@ func Ro(N *big.Int) (R *big.Int, R2 *big.Int) {
 
 	R = new(big.Int).Exp(b, big.NewInt(int64(n)), nil)
 	R2 = new(big.Int).Exp(R, b, N)
-	R.Mod(R, N)
 
 	return R, R2
 }
