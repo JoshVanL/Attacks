@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	WORD_LENGTH = 256
+	WORD_LENGTH  = 256
+	INIT_SAMPLES = 2000
 )
 
 type Attack struct {
@@ -108,12 +109,14 @@ func (a *Attack) Interact(c *big.Int) (m []byte, t *big.Int, err os.Error) {
 	return mb, t, nil
 }
 
-func (a *Attack) generate_samples() os.Error {
-	samples := new(Samples)
+func (a *Attack) generate_samples(samplesN int) os.Error {
 
+	fmt.Printf("Generating samples [%d]...", samplesN)
+
+	samples := new(Samples)
 	t, _ := a.mnt.Mul(big.NewInt(1), a.mnt.Ro2)
 
-	for i := 0; i < 5000; i++ {
+	for i := 0; i < samplesN; i++ {
 		c := utils.RandInt(16, 128)
 		_, tt, err := a.Interact(c)
 		if err != nil {
@@ -130,20 +133,46 @@ func (a *Attack) generate_samples() os.Error {
 
 	a.samples = samples
 
+	fmt.Printf("done.\n")
+
 	return nil
 }
 
-func (a *Attack) find_key() (d *big.Int, err os.Error) {
+func (a *Attack) find_key() (*big.Int, os.Error) {
+	samplesN := INIT_SAMPLES
+
+	for i := 0; i < 10; i++ {
+		d, found, err := a.try_samples(samplesN)
+		if err != nil {
+			return nil, err
+		}
+
+		if found {
+			return utils.BinaryStringToInt(d), nil
+		}
+
+		samplesN += 1000
+		fmt.Printf("\nFailed to find key with this set.\n")
+		if err := a.generate_samples(samplesN); err != nil {
+			return nil, err
+		}
+
+	}
+
+	return nil, utils.NewError("failed after 10 sets of samples, giving up.")
+}
+
+func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) {
 	var greater *big.Int
-	found := false
-	K := "1"
+	d = "1"
 	kSize := 1
+
 	test_message := big.NewInt(12345)
 	test_cipher := new(big.Int).Exp(test_message, a.conf.E, a.conf.N)
 
 	a.printProgess(kSize, big.NewInt(0), "1")
 
-	for !found {
+	for {
 		kSize++
 		var b1 []*big.Int
 		var b2 []*big.Int
@@ -152,7 +181,7 @@ func (a *Attack) find_key() (d *big.Int, err os.Error) {
 		var tList1 []*big.Int
 		var tList0 []*big.Int
 
-		for i := 0; i < 5000; i++ {
+		for i := 0; i < samplesN; i++ {
 			tt := a.samples.timeList[i]
 			xHat := a.samples.xList[i]
 			t := a.samples.tList[i]
@@ -180,38 +209,36 @@ func (a *Attack) find_key() (d *big.Int, err os.Error) {
 		chance0 := new(big.Int).Sub(utils.Average(b3), utils.Average(b4))
 
 		if chance0.Cmp(chance1) > 0 {
-			K = fmt.Sprintf("%s0", K)
-			a.printProgess(kSize, chance0, K)
+			d = fmt.Sprintf("%s0", d)
+			a.printProgess(kSize, chance0, d)
 			a.samples.tList = tList0
 			greater = chance0
 		} else {
-			K = fmt.Sprintf("%s1", K)
-			a.printProgess(kSize, chance1, K)
+			d = fmt.Sprintf("%s1", d)
+			a.printProgess(kSize, chance1, d)
 			a.samples.tList = tList1
 			greater = chance1
 		}
 
-		kMaybe1 := utils.BinaryStringToInt(fmt.Sprintf("%s1", K))
+		kMaybe1 := utils.BinaryStringToInt(fmt.Sprintf("%s1", d))
 		if new(big.Int).Exp(test_cipher, kMaybe1, a.conf.N).Cmp(test_message) == 0 {
-			K = fmt.Sprintf("%s1", K)
-			found = true
+			d = fmt.Sprintf("%s1", d)
+			return d, true, nil
 		}
 
-		kMaybe0 := utils.BinaryStringToInt(fmt.Sprintf("%s0", K))
+		kMaybe0 := utils.BinaryStringToInt(fmt.Sprintf("%s0", d))
 		if new(big.Int).Exp(test_cipher, kMaybe0, a.conf.N).Cmp(test_message) == 0 {
-			K = fmt.Sprintf("%s0", K)
-			found = true
+			d = fmt.Sprintf("%s0", d)
+			return d, true, nil
 		}
 
 		if greater.Cmp(big.NewInt(2)) < 0 {
-			panic("greater is too small!")
+			return "", false, nil
 		}
 		//92319c502a2f137
 	}
 
-	d = utils.BinaryStringToInt(K)
-
-	return d, nil
+	return "", false, utils.NewError("couldn't find key")
 }
 
 func (a *Attack) printProgess(size int, diff *big.Int, k string) {
@@ -220,7 +247,7 @@ func (a *Attack) printProgess(size int, diff *big.Int, k string) {
 		star += "*"
 	}
 
-	fmt.Printf("\r(%d) [%s] diff(%s)", size, star, diff)
+	fmt.Printf("\r(%.2d) [%s] diff(%s) ", size, star, diff)
 }
 
 func (a *Attack) Run() os.Error {
@@ -228,11 +255,9 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
-	fmt.Printf("Generating samples...")
-	if err := a.generate_samples(); err != nil {
+	if err := a.generate_samples(INIT_SAMPLES); err != nil {
 		return utils.Error("failed to generate samples", err)
 	}
-	fmt.Printf("done.\n")
 
 	now := time.Nanoseconds()
 
