@@ -62,6 +62,19 @@ func AppendByte(slice []byte, elem byte) []byte {
 	return fresh
 }
 
+func AppendFloat(slice []float64, elem float64) []float64 {
+	if len(slice) < cap(slice) {
+		slice = slice[0 : len(slice)+1]
+		slice[len(slice)-1] = elem
+		return slice
+	}
+
+	fresh := make([]float64, len(slice)+1, cap(slice)*2+1)
+	copy(fresh, slice)
+	fresh[len(slice)] = elem
+	return fresh
+}
+
 
 func AppendByteSlice(slice []byte, elems []byte) []byte {
 	fresh := make([]byte, len(slice))
@@ -328,4 +341,17 @@ func Average(zs []*big.Int) *big.Int {
 	z, _ = z.Div(z, big.NewInt(int64(len(zs))))
 
 	return z
+}
+
+func AverageFloat(zs []float64) float64 {
+	if len(zs) == 0 {
+		return 0
+	}
+
+	z := float64(0)
+	for _, n := range zs {
+		z += n
+	}
+
+	return z / float64(len(zs))
 }

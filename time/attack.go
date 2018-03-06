@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os"
 	"time"
+	"math"
 
 	"./utils"
 	"./time_c"
@@ -16,7 +17,7 @@ import (
 
 const (
 	WORD_LENGTH  = 256
-	INIT_SAMPLES = 2500
+	INIT_SAMPLES = 1000
 )
 
 type Attack struct {
@@ -179,12 +180,17 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 		var bit1_red []*big.Int
 		var bit1_nored []*big.Int
 
+		var bit0_reds []float64
+		var bit1_reds []float64
+
 		tList0 := make([]*big.Int, samplesN)
 		tList1 := make([]*big.Int, samplesN)
 
 		for i := 0; i < samplesN; i++ {
 			t := a.samples.tList[i]
 			tt := a.samples.timeList[i]
+
+			fmt.Printf(">>%s\n", tt)
 
 			t0, _ := a.mnt.Mul(t, t)
 			tList0[i] = t0
@@ -197,14 +203,18 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 
 			if red0 {
 				bit0_red = utils.AppendBigInt(bit0_red, tt)
+				bit0_reds = utils.AppendFloat(bit0_reds, 1)
 			} else {
 				bit0_nored = utils.AppendBigInt(bit0_nored, tt)
+				bit0_reds = utils.AppendFloat(bit0_reds, 0)
 			}
 
 			if red1 {
 				bit1_red = utils.AppendBigInt(bit1_red, tt)
+				bit1_reds = utils.AppendFloat(bit1_reds, 1)
 			} else {
 				bit1_nored = utils.AppendBigInt(bit1_nored, tt)
+				bit1_reds = utils.AppendFloat(bit1_reds, 0)
 			}
 		}
 
@@ -242,6 +252,44 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 	}
 
 	return "", false, utils.NewError("couldn't find key")
+}
+
+func (a *Attack) correlation(reds []float64) float64 {
+	cpyM := make([]float64, len(reds))
+	copy(cpyM, reds)
+
+	eM := utils.AverageFloat(reds)
+	for i := range cpyM {
+		cpyM[i] = cpyM[i] - eM
+	}
+	eeM := utils.AverageFloat(cpyM)
+
+	cpyT := make([]*big.Int, len(a.samples.timeList))
+	copy(cpyT, a.samples.timeList)
+	eT := utils.Average(a.samples.timeList)
+	for i := range cpyT {
+		cpyT[i].Sub(cpyT[i], eT)
+	}
+	eeT := utils.Average(cpyT)
+
+	// var(X)  = E(X^2) - E(X)^2
+	eT2 := new(big.Int).Exp(eT, big.NewInt(2), nil)
+	copy(cpyT, a.samples.timeList)
+	for i := range cpyT {
+		cpyT[i].Exp(cpyT[i], big.NewInt(2), nil)
+	}
+	e2T := utils.Average(cpyT)
+	varT := new(big.Int).Sub(e2T, eT2)
+
+	eM2 := math.Pow(eM, 2)
+	copy(cpyM, reds)
+	for i := range cpyM {
+		cpyM[i] = math.Pow(cpyM[i], 2)
+	}
+	e2M := utils.AverageFloat(cpyM)
+	varM := e2M - eM2
+
+	return 0
 }
 
 func (a *Attack) printProgess(size int, diff *big.Int, k string) {
