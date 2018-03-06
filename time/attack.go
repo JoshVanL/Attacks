@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"bytes"
 	"os"
+	"runtime"
 	"time"
 	"math"
 
@@ -17,7 +18,8 @@ import (
 
 const (
 	WORD_LENGTH  = 256
-	INIT_SAMPLES = 1000
+	INIT_SAMPLES = 2000
+	THRESHOLD    = 0.01
 )
 
 type Attack struct {
@@ -28,14 +30,19 @@ type Attack struct {
 
 	samples *Samples
 	mnt     *montgomery.Montgomery
+
+	bit0_reds []float64
+	bit1_reds []float64
+	tList0    []*big.Int
+	tList1    []*big.Int
 }
 
 type Samples struct {
-	xList    []*big.Int
-	tList    []*big.Int
-	cList    []*big.Int
-	timeList []*big.Int
-	messages []*big.Int
+	xList         []*big.Int
+	tList         []*big.Int
+	cList         []*big.Int
+	floatTimeList []float64
+	messages      []*big.Int
 }
 
 func NewAttack() (attack *Attack, err os.Error) {
@@ -124,7 +131,7 @@ func (a *Attack) generate_samples(samplesN int) os.Error {
 			return utils.Error("error interacting for samples", err)
 		}
 		samples.cList = utils.AppendBigInt(samples.cList, c)
-		samples.timeList = utils.AppendBigInt(samples.timeList, tt)
+		samples.floatTimeList = utils.AppendFloat(samples.floatTimeList, utils.BigIntToFloat(tt))
 		xHat, _ := a.mnt.Mul(c, a.mnt.Ro2)
 		tTemp, _ := a.mnt.Mul(t, t)
 		tTemp, _ = a.mnt.Mul(tTemp, xHat)
@@ -164,72 +171,49 @@ func (a *Attack) find_key() (*big.Int, os.Error) {
 }
 
 func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) {
-	var diff *big.Int
+	var diff float64
 	d = "1"
 	kSize := 1
 
 	test_message := big.NewInt(12345)
 	test_cipher := new(big.Int).Exp(test_message, a.conf.E, a.conf.N)
 
-	a.printProgess(kSize, big.NewInt(0), "1")
+	a.printProgess(kSize, 0, "1")
+
+	a.bit0_reds = make([]float64, samplesN)
+	a.bit1_reds = make([]float64, samplesN)
+
+	a.tList0 = make([]*big.Int, samplesN)
+	a.tList1 = make([]*big.Int, samplesN)
 
 	for {
 		kSize++
-		var bit0_red []*big.Int
-		var bit0_nored []*big.Int
-		var bit1_red []*big.Int
-		var bit1_nored []*big.Int
 
-		var bit0_reds []float64
-		var bit1_reds []float64
+		wg := utils.NewWaitGroup(samplesN)
 
-		tList0 := make([]*big.Int, samplesN)
-		tList1 := make([]*big.Int, samplesN)
+		runtime.GOMAXPROCS(2)
 
 		for i := 0; i < samplesN; i++ {
-			t := a.samples.tList[i]
-			tt := a.samples.timeList[i]
-
-			fmt.Printf(">>%s\n", tt)
-
-			t0, _ := a.mnt.Mul(t, t)
-			tList0[i] = t0
-
-			t1, _ := a.mnt.Mul(t0, a.samples.xList[i])
-			tList1[i] = t1
-
-			_, red0 := a.mnt.Mul(t0, t0)
-			_, red1 := a.mnt.Mul(t1, t1)
-
-			if red0 {
-				bit0_red = utils.AppendBigInt(bit0_red, tt)
-				bit0_reds = utils.AppendFloat(bit0_reds, 1)
-			} else {
-				bit0_nored = utils.AppendBigInt(bit0_nored, tt)
-				bit0_reds = utils.AppendFloat(bit0_reds, 0)
-			}
-
-			if red1 {
-				bit1_red = utils.AppendBigInt(bit1_red, tt)
-				bit1_reds = utils.AppendFloat(bit1_reds, 1)
-			} else {
-				bit1_nored = utils.AppendBigInt(bit1_nored, tt)
-				bit1_reds = utils.AppendFloat(bit1_reds, 0)
-			}
+			go a.compute(i, wg)
 		}
 
-		diff0 := new(big.Int).Sub(utils.Average(bit0_red), utils.Average(bit0_nored))
-		diff1 := new(big.Int).Sub(utils.Average(bit1_red), utils.Average(bit1_nored))
+		runtime.Gosched()
+		go wg.Wait()
 
-		if diff0.Cmp(diff1) > 0 {
+		runtime.GOMAXPROCS(1)
+
+		diff0 := a.correlation(a.bit0_reds)
+		diff1 := a.correlation(a.bit1_reds)
+
+		if diff0 > diff1 {
 			d = fmt.Sprintf("%s0", d)
 			a.printProgess(kSize, diff0, d)
-			a.samples.tList = tList0
+			a.samples.tList = a.tList0
 			diff = diff0
 		} else {
 			d = fmt.Sprintf("%s1", d)
 			a.printProgess(kSize, diff1, d)
-			a.samples.tList = tList1
+			a.samples.tList = a.tList1
 			diff = diff1
 		}
 
@@ -245,60 +229,95 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 			return d, true, nil
 		}
 
-		if diff.Cmp(big.NewInt(2)) < 0 {
+		//092319C502A2F137
+		//092319C502A2F137
+		//092319C502A2F137
+		//092319C502A2F137
+		//092319C502A2F137
+		//092319C502A2F137
+		//092319C502A2F137
+
+		if diff < THRESHOLD {
 			return "", false, nil
 		}
-		//92319c502a2f137
 	}
 
 	return "", false, utils.NewError("couldn't find key")
 }
 
-func (a *Attack) correlation(reds []float64) float64 {
-	cpyM := make([]float64, len(reds))
-	copy(cpyM, reds)
+func (a *Attack) compute(i int, wg *utils.WaitGroup) {
+	t := a.samples.tList[i]
 
-	eM := utils.AverageFloat(reds)
-	for i := range cpyM {
-		cpyM[i] = cpyM[i] - eM
+	t0, _ := a.mnt.Mul(t, t)
+	a.tList0[i] = t0
+
+	t1, _ := a.mnt.Mul(t0, a.samples.xList[i])
+	a.tList1[i] = t1
+
+	_, red0 := a.mnt.Mul(t0, t0)
+	_, red1 := a.mnt.Mul(t1, t1)
+
+	if red0 {
+		a.bit0_reds[i] = 1
+	} else {
+		a.bit0_reds[i] = 0
 	}
-	eeM := utils.AverageFloat(cpyM)
 
-	cpyT := make([]*big.Int, len(a.samples.timeList))
-	copy(cpyT, a.samples.timeList)
-	eT := utils.Average(a.samples.timeList)
-	for i := range cpyT {
-		cpyT[i].Sub(cpyT[i], eT)
+	if red1 {
+		a.bit1_reds[i] = 1
+	} else {
+		a.bit1_reds[i] = 0
 	}
-	eeT := utils.Average(cpyT)
 
-	// var(X)  = E(X^2) - E(X)^2
-	eT2 := new(big.Int).Exp(eT, big.NewInt(2), nil)
-	copy(cpyT, a.samples.timeList)
-	for i := range cpyT {
-		cpyT[i].Exp(cpyT[i], big.NewInt(2), nil)
-	}
-	e2T := utils.Average(cpyT)
-	varT := new(big.Int).Sub(e2T, eT2)
+	wg.Done()
 
-	eM2 := math.Pow(eM, 2)
-	copy(cpyM, reds)
-	for i := range cpyM {
-		cpyM[i] = math.Pow(cpyM[i], 2)
-	}
-	e2M := utils.AverageFloat(cpyM)
-	varM := e2M - eM2
-
-	return 0
+	runtime.Goexit()
 }
 
-func (a *Attack) printProgess(size int, diff *big.Int, k string) {
+func (a *Attack) correlation(reds []float64) float64 {
+	EM := utils.AverageFloat(reds)
+	MEM := make([]float64, len(reds))
+	for i := range reds {
+		MEM[i] = reds[i] - EM
+	}
+
+	ET := utils.AverageFloat(a.samples.floatTimeList)
+	TET := make([]float64, len(a.samples.floatTimeList))
+	for i := range a.samples.floatTimeList {
+		TET[i] = a.samples.floatTimeList[i] - ET
+	}
+
+	var R float64
+	for i := range a.samples.floatTimeList {
+		R += MEM[i] * TET[i]
+	}
+
+	R = R / float64(len(a.samples.floatTimeList))
+
+	VM := make([]float64, len(reds))
+	for i := range reds {
+		VM[i] = math.Pow(reds[i]-EM, 2)
+	}
+	varM := utils.AverageFloat(VM)
+
+	VT := make([]float64, len(a.samples.floatTimeList))
+	for i := range a.samples.floatTimeList {
+		VT[i] = math.Pow(a.samples.floatTimeList[i]-ET, 2)
+	}
+	varT := utils.AverageFloat(VT)
+
+	varMT := math.Sqrt(varM * varT)
+
+	return R / varMT
+}
+
+func (a *Attack) printProgess(size int, diff float64, k string) {
 	star := k
 	for i := len(k); i < 59; i++ {
 		star += "*"
 	}
 
-	fmt.Printf("\r(%.2d) [%s] diff(%s) ", size, star, diff)
+	fmt.Printf("\r(%.2d) [%s] diff(%.3f) ", size, star, diff)
 }
 
 func (a *Attack) Run() os.Error {

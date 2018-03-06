@@ -5,12 +5,34 @@ import (
 	"big"
 	"rand"
 	"os"
+	"encoding/binary"
 )
 
 const (
 	WORD_LENGTH = 256
 	BASE        = 16
 )
+
+type WaitGroup struct {
+	n      int
+	stopCh chan struct{}
+}
+
+func NewWaitGroup(n int) *WaitGroup {
+	return &WaitGroup{
+		n: n,
+		stopCh: make(chan struct{}),
+	}
+}
+
+func (w *WaitGroup) Done() {
+	w.n--
+	if w.n == 0 {
+		close(w.stopCh)
+	}
+}
+
+func (w *WaitGroup) Wait() { <-w.stopCh }
 
 func NewError(err string) os.Error { return os.NewError(err) }
 
@@ -31,19 +53,6 @@ func Append(slice []string, elem string) []string {
 	}
 
 	fresh := make([]string, len(slice)+1, cap(slice)*2+1)
-	copy(fresh, slice)
-	fresh[len(slice)] = elem
-	return fresh
-}
-
-func AppendBytes(slice [][]byte, elem []byte) [][]byte {
-	if len(slice) < cap(slice) {
-		slice = slice[0 : len(slice)+1]
-		slice[len(slice)-1] = elem
-		return slice
-	}
-
-	fresh := make([][]byte, len(slice)+1, cap(slice)*2+1)
 	copy(fresh, slice)
 	fresh[len(slice)] = elem
 	return fresh
@@ -328,21 +337,6 @@ func BinaryStringToInt(str string) *big.Int {
 	return z
 }
 
-func Average(zs []*big.Int) *big.Int {
-	if len(zs) == 0 {
-		return big.NewInt(0)
-	}
-
-	z := new(big.Int)
-	for _, n := range zs {
-		z.Add(z, n)
-	}
-
-	z, _ = z.Div(z, big.NewInt(int64(len(zs))))
-
-	return z
-}
-
 func AverageFloat(zs []float64) float64 {
 	if len(zs) == 0 {
 		return 0
@@ -354,4 +348,15 @@ func AverageFloat(zs []float64) float64 {
 	}
 
 	return z / float64(len(zs))
+}
+
+func BigIntToFloat(z *big.Int) float64 {
+	b := z.Bytes()
+	if len(b) < 8 {
+		tmp := make([]byte, 8)
+		copy(tmp[8-len(b):8], b)
+		b = tmp
+	}
+
+	return float64(binary.BigEndian.Uint64(b))
 }
