@@ -1,3 +1,11 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
 package time_c
 
 import (
@@ -13,6 +21,7 @@ type Conf struct {
 	E *big.Int
 }
 
+// Initialise new Time Conf struct
 func NewConf(fileName string) (*Conf, os.Error) {
 	fr, err := file.NewFileReader(fileName)
 	if err != nil {

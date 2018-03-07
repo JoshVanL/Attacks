@@ -1,3 +1,11 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
 package montgomery
 
 import (
@@ -18,6 +26,7 @@ type Montgomery struct {
 	Ro2 *big.Int
 }
 
+// Initialise new Montgomery struct
 func NewMontgomery(N *big.Int) *Montgomery {
 	R, R2 := Ro(N)
 
@@ -31,6 +40,7 @@ func NewMontgomery(N *big.Int) *Montgomery {
 	return m
 }
 
+// Calculate Montgomery omega
 func Omega(N *big.Int) *big.Int {
 	o := big.NewInt(1)
 	n := getLimb(N, 0)
@@ -53,6 +63,7 @@ func Omega(N *big.Int) *big.Int {
 	return o
 }
 
+// Calculate ro and ro squared
 func Ro(N *big.Int) (R *big.Int, R2 *big.Int) {
 	b := big.NewInt(2)
 	n := N.Len()
@@ -63,46 +74,7 @@ func Ro(N *big.Int) (R *big.Int, R2 *big.Int) {
 	return R, R2
 }
 
-func getBit(b byte, i int) byte { return (b >> uint(i)) & 1 }
-
-func bit(x *big.Int, i int) uint {
-	b := x.Bytes()
-	if len(b) == 0 {
-		return 0
-	}
-
-	if len(b) < (i/BYTES_PER_LIMB)+1 {
-		return 0
-	}
-
-	n := uint64(b[len(b)-1-(i/BYTES_PER_LIMB)])
-	return uint((n >> (uint(i % BYTES_PER_LIMB))) & 1)
-}
-
-func (m *Montgomery) Red(z *big.Int) *big.Int {
-	r := new(big.Int).Set(z)
-
-	for i := 0; i < ceilDiv(len(m.n.Bytes()), BYTES_PER_LIMB); i++ {
-		ui := new(big.Int).Mul(getLimb(r, 0), m.o)
-		ui = getLimb(ui, 0)
-
-		uiN := new(big.Int).Mul(m.n, ui)
-
-		r.Add(r, uiN)
-
-		rBytes := r.Bytes()
-		b := make([]byte, len(rBytes)-BYTES_PER_LIMB)
-		b = rBytes[0:(len(rBytes) - BYTES_PER_LIMB)]
-		r.SetBytes(b)
-	}
-
-	if r.Cmp(m.n) >= 0 {
-		r.Sub(r, m.n)
-	}
-
-	return r
-}
-
+// Calculate Montgomery multiplication
 func (m *Montgomery) Mul(x, y *big.Int) (r *big.Int, red bool) {
 	r = big.NewInt(0)
 	x0 := getLimb(x, 0)
@@ -135,6 +107,7 @@ func (m *Montgomery) Mul(x, y *big.Int) (r *big.Int, red bool) {
 	return r, red
 }
 
+// Calculate Montgomery exponentiation
 func (m *Montgomery) Exp(x, y *big.Int) *big.Int {
 	t_hat, _ := m.Mul(big.NewInt(1), m.Ro2)
 	x_hat, _ := m.Mul(x, m.Ro2)
@@ -194,9 +167,35 @@ func (m *Montgomery) Exp(x, y *big.Int) *big.Int {
 	}
 
 	return t_hat
-
 }
 
+// Calculate Montgomery reduction
+func (m *Montgomery) Red(z *big.Int) *big.Int {
+	r := new(big.Int).Set(z)
+
+	for i := 0; i < ceilDiv(len(m.n.Bytes()), BYTES_PER_LIMB); i++ {
+		ui := new(big.Int).Mul(getLimb(r, 0), m.o)
+		ui = getLimb(ui, 0)
+
+		uiN := new(big.Int).Mul(m.n, ui)
+
+		r.Add(r, uiN)
+
+		rBytes := r.Bytes()
+		b := make([]byte, len(rBytes)-BYTES_PER_LIMB)
+		b = rBytes[0:(len(rBytes) - BYTES_PER_LIMB)]
+		r.SetBytes(b)
+	}
+
+	if r.Cmp(m.n) >= 0 {
+		r.Sub(r, m.n)
+	}
+
+	return r
+}
+
+
+// Return max of two ints
 func max(x, y int) int {
 	if x > y {
 		return x
@@ -205,8 +204,10 @@ func max(x, y int) int {
 	return y
 }
 
+// Bitwise OR of two ints
 func concatonate(x, y uint64) uint64 { return x | y }
 
+// Return uint64 word of start and end bit positions of a big.Int
 func getWord(x *big.Int, start, end int) uint64 {
 	b := x.Bytes()
 	if len(b) < 8 {
@@ -222,6 +223,7 @@ func getWord(x *big.Int, start, end int) uint64 {
 	return (u << (uint(LIMB_SIZE - 1 - end))) >> (uint(LIMB_SIZE - 1 - end + start))
 }
 
+// Return big.Int limb of index i
 func getLimb(z *big.Int, s int) *big.Int {
 	b := z.Bytes()
 	e := len(b) - (s * BYTES_PER_LIMB)
@@ -234,4 +236,20 @@ func getLimb(z *big.Int, s int) *big.Int {
 	return new(big.Int).SetBytes(b[s:e])
 }
 
+// Ceiling division on ints
 func ceilDiv(x, y int) int { return (x + y - 1) / y }
+
+// Return bit of a big.Int at position i
+func bit(x *big.Int, i int) uint {
+	b := x.Bytes()
+	if len(b) == 0 {
+		return 0
+	}
+
+	if len(b) < (i/BYTES_PER_LIMB)+1 {
+		return 0
+	}
+
+	n := uint64(b[len(b)-1-(i/BYTES_PER_LIMB)])
+	return uint((n >> (uint(i % BYTES_PER_LIMB))) & 1)
+}

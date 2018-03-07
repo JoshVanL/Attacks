@@ -1,3 +1,11 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
 package main
 
 import (
@@ -44,6 +52,22 @@ type Samples struct {
 	messages []*big.Int
 }
 
+func main() {
+	fmt.Printf("Initalising attack...")
+	a, err := NewAttack()
+	if err != nil {
+		utils.Fatal(err)
+	}
+	fmt.Printf("done.\n")
+
+	runtime.GOMAXPROCS(2)
+
+	if err := a.Run(); err != nil {
+		utils.Fatal(err)
+	}
+}
+
+// Initialise new attack struct
 func NewAttack() (attack *Attack, err os.Error) {
 	args, err := utils.ParseArguments()
 	if err != nil {
@@ -69,53 +93,58 @@ func NewAttack() (attack *Attack, err os.Error) {
 		nil
 }
 
-
-func (a *Attack) Write(c []byte) os.Error {
-	if err := a.cmd.WriteStdin(c); err != nil {
-		return utils.Error("failed to write ciphertext ", err)
+// Main attack run function
+func (a *Attack) Run() os.Error {
+	if err := a.cmd.Run(); err != nil {
+		return err
 	}
+
+	if err := a.generateSamples(INIT_SAMPLES); err != nil {
+		return utils.Error("failed to generate samples", err)
+	}
+
+	now := time.Nanoseconds()
+
+	fmt.Printf("Finding key...\n")
+	d, err := a.findKey()
+	if err != nil {
+		return utils.Error("error finding key", err)
+	}
+	fmt.Printf("\nKey found.\n")
+	fmt.Printf("Attack Complete.\n")
+	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
+
+	fmt.Printf("Target material: [%X]\n", d.Bytes())
+	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
 
-func (a *Attack) Read() (m []byte, t []byte, err os.Error) {
-	b, err := a.cmd.ReadStdout()
-	if err != nil {
-		return nil, nil, utils.Error("failed to read stdout file", err)
+// Function to loop over trying samples
+func (a *Attack) findKey() (*big.Int, os.Error) {
+	samplesN := INIT_SAMPLES
+
+	for i := 0; i < 30; i++ {
+		d, found := a.trySamples(samplesN)
+
+		if found {
+			return utils.BinaryStringToInt(d), nil
+		}
+
+		fmt.Printf("\nFailed to find key with this set.\n")
+
+		samplesN += 1000
+		if err := a.generateSamples(samplesN); err != nil {
+			return nil, err
+		}
+
 	}
 
-	split := bytes.Split(b, []byte{'\n'}, 3)
-	if len(split) != 3 {
-		return nil, nil, utils.NewError(fmt.Sprintf("got unexpected number of splits from read. exp=3 got=%d\n", len(split)))
-	}
-
-	return split[0], split[1], nil
+	return nil, utils.NewError("failed after 30 sets of samples, giving up.")
 }
 
-func (a *Attack) Interact(c *big.Int) (m []byte, t *big.Int, err os.Error) {
-	n := make([]byte, len(c.Bytes())*2)
-	hex.Encode(n, c.Bytes())
-	n = utils.Pad(bytes.AddByte(n, '\n'), WORD_LENGTH)
 
-	if err := a.Write(n); err != nil {
-		return nil, nil, err
-	}
-
-	tb, mb, err := a.Read()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	t, err = utils.BytesToInt(tb)
-	if err != nil {
-		return nil, nil, utils.Error("failed to convert time bytes", err)
-	}
-
-	a.interactions++
-
-	return mb, t, nil
-}
-
+// Generate random samples for use in attack
 func (a *Attack) generateSamples(samplesN int) os.Error {
 
 	fmt.Printf("Generating samples [%d]...", samplesN)
@@ -147,28 +176,7 @@ func (a *Attack) generateSamples(samplesN int) os.Error {
 	return nil
 }
 
-func (a *Attack) findKey() (*big.Int, os.Error) {
-	samplesN := INIT_SAMPLES
-
-	for i := 0; i < 30; i++ {
-		d, found := a.trySamples(samplesN)
-
-		if found {
-			return utils.BinaryStringToInt(d), nil
-		}
-
-		fmt.Printf("\nFailed to find key with this set.\n")
-
-		samplesN += 1000
-		if err := a.generateSamples(samplesN); err != nil {
-			return nil, err
-		}
-
-	}
-
-	return nil, utils.NewError("failed after 30 sets of samples, giving up.")
-}
-
+// Calculate bits with samples
 func (a *Attack) trySamples(samplesN int) (d string, found bool) {
 	var diff float64
 
@@ -236,10 +244,10 @@ func (a *Attack) trySamples(samplesN int) (d string, found bool) {
 	return d, found
 }
 
+// Compute the Montgomery multiplications with captured reductions
 func (a *Attack) compute(i int, wg *utils.WaitGroup) {
 
 	a.tList0[i], _ = a.mnt.Mul(a.samples.tList[i], a.samples.tList[i])
-
 	a.tList1[i], _ = a.mnt.Mul(a.tList0[i], a.samples.xList[i])
 
 	_, red0 := a.mnt.Mul(a.tList0[i], a.tList0[i])
@@ -262,6 +270,7 @@ func (a *Attack) compute(i int, wg *utils.WaitGroup) {
 	runtime.Goexit()
 }
 
+// Calculate the correlation of reductions and times
 func (a *Attack) correlation(reds []float64) float64 {
 	var R float64
 
@@ -288,6 +297,7 @@ func (a *Attack) correlation(reds []float64) float64 {
 	return R / math.Sqrt(varM*varT)
 }
 
+// Pretty print the progress of key bits
 func (a *Attack) printProgess(size int, diff float64, k string) {
 	star := k
 	for i := len(k); i < 59; i++ {
@@ -297,43 +307,51 @@ func (a *Attack) printProgess(size int, diff float64, k string) {
 	fmt.Printf("\r(%.2d) [%s] diff(%.3f) ", size, star, diff)
 }
 
-func (a *Attack) Run() os.Error {
-	if err := a.cmd.Run(); err != nil {
-		return err
+// Write c to D stdin
+func (a *Attack) Write(c []byte) os.Error {
+	if err := a.cmd.WriteStdin(c); err != nil {
+		return utils.Error("failed to write ciphertext ", err)
 	}
-
-	if err := a.generateSamples(INIT_SAMPLES); err != nil {
-		return utils.Error("failed to generate samples", err)
-	}
-
-	now := time.Nanoseconds()
-
-	fmt.Printf("Finding key...\n")
-	d, err := a.findKey()
-	if err != nil {
-		return utils.Error("error finding key", err)
-	}
-	fmt.Printf("\nKey found.\n")
-	fmt.Printf("Attack Complete.\n")
-	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
-
-	fmt.Printf("Target material: [%X]\n", d.Bytes())
-	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
 
-func main() {
-	fmt.Printf("Initalising attack...")
-	a, err := NewAttack()
+// Interact with D. Convert c to bytes with CR
+func (a *Attack) Interact(c *big.Int) (m []byte, t *big.Int, err os.Error) {
+	n := make([]byte, len(c.Bytes())*2)
+	hex.Encode(n, c.Bytes())
+	n = utils.Pad(bytes.AddByte(n, '\n'), WORD_LENGTH)
+
+	if err := a.Write(n); err != nil {
+		return nil, nil, err
+	}
+
+	tb, mb, err := a.Read()
 	if err != nil {
-		utils.Fatal(err)
+		return nil, nil, err
 	}
-	fmt.Printf("done.\n")
 
-	runtime.GOMAXPROCS(2)
-
-	if err := a.Run(); err != nil {
-		utils.Fatal(err)
+	t, err = utils.BytesToInt(tb)
+	if err != nil {
+		return nil, nil, utils.Error("failed to convert time bytes", err)
 	}
+
+	a.interactions++
+
+	return mb, t, nil
+}
+
+// Read message and time from D stdout
+func (a *Attack) Read() (m []byte, t []byte, err os.Error) {
+	b, err := a.cmd.ReadStdout()
+	if err != nil {
+		return nil, nil, utils.Error("failed to read stdout file", err)
+	}
+
+	split := bytes.Split(b, []byte{'\n'}, 3)
+	if len(split) != 3 {
+		return nil, nil, utils.NewError(fmt.Sprintf("got unexpected number of splits from read. exp=3 got=%d\n", len(split)))
+	}
+
+	return split[0], split[1], nil
 }

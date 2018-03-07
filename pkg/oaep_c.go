@@ -1,3 +1,11 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
 package oaep_c
 
 import (
@@ -25,6 +33,7 @@ type Conf struct {
 	B *big.Int
 }
 
+// Initialise new OEAP Conf struct
 func NewConf(fileName string) (*Conf, os.Error) {
 	fr, err := file.NewFileReader(fileName)
 	if err != nil {
@@ -64,6 +73,7 @@ func NewConf(fileName string) (*Conf, os.Error) {
 	return conf, nil
 }
 
+// Calculate RSA encryption on f using pk
 func (c *Conf) RSAf(f *big.Int) *big.Int {
 	z := new(big.Int).Exp(f, c.E, c.N)
 
@@ -73,27 +83,7 @@ func (c *Conf) RSAf(f *big.Int) *big.Int {
 	return z
 }
 
-func (c *Conf) I2OSP(x int64, l int64) (X []byte, err os.Error) {
-	if x >= int64(math.Pow(256, float64(l))) {
-		return nil, utils.NewError("integer too large")
-	}
-
-	var p int64
-	var n int64
-	X = make([]byte, l)
-
-	index := 0
-	for i := l - 1; i >= 0; i-- {
-		p = int64(math.Pow(256, float64(i)))
-		n = x / p
-		x = x % p
-		X[index] = byte(n)
-		index++
-	}
-
-	return X, nil
-}
-
+// MGF1 function
 func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 	if l > MAX_LENGTH {
 		return nil, utils.NewError("mask too long")
@@ -125,4 +115,37 @@ func (c *Conf) MGF1(Z []byte, l int64) (mask []byte, err os.Error) {
 	}
 
 	return T[0:l], nil
+}
+
+// Generate Octet string from integer
+func (c *Conf) I2OSP(x int64, l int64) (X []byte, err os.Error) {
+	if x >= int64(math.Pow(256, float64(l))) {
+		return nil, utils.NewError("integer too large")
+	}
+
+	var p int64
+	var n int64
+	X = make([]byte, l)
+
+	index := 0
+	for i := l - 1; i >= 0; i-- {
+		p = int64(math.Pow(256, float64(i)))
+		n = x / p
+		x = x % p
+		X[index] = byte(n)
+		index++
+	}
+
+	return X, nil
+}
+
+// Check message by encrypting with pk and comparing against given cipher
+func (c *Conf) CheckMessage(m *big.Int) os.Error {
+	m_c := new(big.Int).Exp(m, c.E, c.N)
+
+	if m_c.Cmp(c.C) != 0 {
+		return utils.NewError("calculated message cipher and given cipher texts don't match.")
+	}
+
+	return nil
 }

@@ -1,3 +1,11 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
 package main
 
 import (
@@ -30,6 +38,20 @@ type Attack struct {
 	interactions int
 }
 
+func main() {
+	fmt.Printf("Initialising attack...")
+	a, err := NewAttack()
+	if err != nil {
+		utils.Fatal(err)
+	}
+	fmt.Printf("done.\n")
+
+	if err := a.Run(); err != nil {
+		utils.Fatal(err)
+	}
+}
+
+// Initialise new attack struct
 func NewAttack() (attack *Attack, err os.Error) {
 	args, err := utils.ParseArguments()
 	if err != nil {
@@ -54,49 +76,67 @@ func NewAttack() (attack *Attack, err os.Error) {
 		nil
 }
 
-func (a *Attack) Write(l, c []byte) os.Error {
-	if err := a.cmd.WriteStdin(l); err != nil {
-		return utils.Error("failed to write lable", err)
+// Main attack run function
+func (a *Attack) Run() os.Error {
+	fmt.Printf("Executing Attack.\n")
+
+	// Execute D program
+	if err := a.cmd.Run(); err != nil {
+		return utils.Error("failed to run attack command", err)
 	}
-	if err := a.cmd.WriteStdin(c); err != nil {
-		return utils.Error("failed to write ciphertext ", err)
+
+	now := time.Nanoseconds()
+
+	fmt.Printf("Finding F1...")
+	f1, err := a.findF1()
+	if err != nil {
+		return err
 	}
+	fmt.Printf("done.\n")
+	fmt.Printf("F1: %s\n", f1.String())
+
+	fmt.Printf("Finding F2...")
+	f2, err := a.findF2(f1)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("done.\n")
+	fmt.Printf("F2: %s\n", f2.String())
+
+	fmt.Printf("Finding EM...")
+	em, err := a.findEM(f2)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("done.\n")
+
+	// Kill D program
+	if err := a.cmd.Kill(); err != nil {
+		return err
+	}
+
+	fmt.Printf("Checking EM...")
+	if err := a.conf.CheckMessage(em); err != nil {
+		return err
+	}
+	fmt.Printf("done.\n")
+
+	fmt.Printf("Decoding EM...")
+	M, err := a.EME_OAEP_Decode(em)
+	if err != nil {
+		return utils.Error("decoding error", err)
+	}
+
+	fmt.Printf("Attack Complete.\n")
+	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
+
+	fmt.Printf("Target material: [%X]\n", M)
+	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
 
-func (a *Attack) Read() ([]byte, os.Error) {
-	b, err := a.cmd.ReadStdout()
-	if err != nil {
-		return nil, utils.Error("failed to read stdout file", err)
-	}
-
-	return b, nil
-}
-
-func (a *Attack) Interact(c *big.Int) (res byte, err os.Error) {
-	n := make([]byte, len(c.Bytes())*2)
-	hex.Encode(n, c.Bytes())
-	n = utils.Pad(bytes.AddByte(n, '\n'), WORD_LENGTH)
-
-	if err := a.Write(a.conf.L, n); err != nil {
-		return 0, err
-	}
-
-	b, err := a.Read()
-	if err != nil {
-		return 0, err
-	}
-
-	a.interactions++
-
-	if b[0] > ERROR2 {
-		utils.Fatal(utils.NewError(fmt.Sprintf("got bad error code from D: %s\n", string(b[0]))))
-	}
-
-	return b[0], nil
-}
-
+// Find F1
 func (a *Attack) findF1() (*big.Int, os.Error) {
 	f1 := big.NewInt(2)
 	two := big.NewInt(2)
@@ -118,6 +158,7 @@ func (a *Attack) findF1() (*big.Int, os.Error) {
 	return f1, nil
 }
 
+// Find F2
 func (a *Attack) findF2(f1 *big.Int) (*big.Int, os.Error) {
 	f1_half := new(big.Int)
 	f2 := new(big.Int)
@@ -146,6 +187,7 @@ func (a *Attack) findF2(f1 *big.Int) (*big.Int, os.Error) {
 	return f2, nil
 }
 
+// Find encoded message.
 func (a *Attack) findEM(f2 *big.Int) (*big.Int, os.Error) {
 	m_max := new(big.Int)
 	f_tmp := new(big.Int)
@@ -205,17 +247,7 @@ func (a *Attack) findEM(f2 *big.Int) (*big.Int, os.Error) {
 	return m_min, nil
 }
 
-func (a *Attack) checkMessage(m *big.Int) os.Error {
-	m_c := new(big.Int)
-	m_c.Exp(m, a.conf.E, a.conf.N)
-
-	if m_c.Cmp(a.conf.C) != 0 {
-		return utils.NewError("calculated message cipher and given cipertexts don't match.")
-	}
-
-	return nil
-}
-
+// Decode the encoded message. Also checks the label hashed is equal to DB
 func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	hLen := int64(sha1.New().Size())
 	m := em.Bytes()
@@ -247,7 +279,7 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	l := new(big.Int)
 	l.SetString(string(a.conf.L[0:len(a.conf.L)-1]), BASE)
 	if _, err := hash.Write(l.Bytes()); err != nil {
-		return nil, err
+		return nil, utils.Error("failed to hash label", err)
 	}
 
 	if !bytes.Equal(hash.Sum(), DB[0:hLen]) {
@@ -258,73 +290,48 @@ func (a *Attack) EME_OAEP_Decode(em *big.Int) ([]byte, os.Error) {
 	return DB[indexM+1:], nil
 }
 
-func (a *Attack) Run() os.Error {
-	fmt.Printf("Executing Attack.\n")
+// Interact with D. Convert c to bytes with CR
+func (a *Attack) Interact(c *big.Int) (res byte, err os.Error) {
+	n := make([]byte, len(c.Bytes())*2)
+	hex.Encode(n, c.Bytes())
+	n = utils.Pad(bytes.AddByte(n, '\n'), WORD_LENGTH)
 
-	if err := a.cmd.Run(); err != nil {
-		return utils.Error("failed to run attack command", err)
+	if err := a.Write(a.conf.L, n); err != nil {
+		return 0, err
 	}
 
-	now := time.Nanoseconds()
-
-	fmt.Printf("Finding F1...")
-	f1, err := a.findF1()
+	b, err := a.Read()
 	if err != nil {
-		return err
-	}
-	fmt.Printf("done.\n")
-	fmt.Printf("F1: %s\n", f1.String())
-
-	fmt.Printf("Finding F2...")
-	f2, err := a.findF2(f1)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("done.\n")
-	fmt.Printf("F2: %s\n", f2.String())
-
-	fmt.Printf("Finding EM...")
-	em, err := a.findEM(f2)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("done.\n")
-
-	if err := a.cmd.Kill(); err != nil {
-		return err
+		return 0, err
 	}
 
-	fmt.Printf("Checking EM...")
-	if err := a.checkMessage(em); err != nil {
-		return err
-	}
-	fmt.Printf("done.\n")
-	//fmt.Printf("EM: [%X]\n", em.Bytes())
+	a.interactions++
 
-	fmt.Printf("Decoding EM...")
-	M, err := a.EME_OAEP_Decode(em)
-	if err != nil {
-		return utils.Error("decoding error", err)
+	if b[0] > ERROR2 {
+		utils.Fatal(utils.NewError(fmt.Sprintf("got bad error code from D: %s\n", string(b[0]))))
 	}
 
-	fmt.Printf("Attack Complete.\n")
-	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
+	return b[0], nil
+}
 
-	fmt.Printf("Target material: [%X]\n", M)
-	fmt.Printf("Interactions: %d\n", a.interactions)
+// Write l and c bytes to D stdin
+func (a *Attack) Write(l, c []byte) os.Error {
+	if err := a.cmd.WriteStdin(l); err != nil {
+		return utils.Error("failed to write lable", err)
+	}
+	if err := a.cmd.WriteStdin(c); err != nil {
+		return utils.Error("failed to write ciphertext ", err)
+	}
 
 	return nil
 }
 
-func main() {
-	fmt.Printf("Initialising attack...")
-	a, err := NewAttack()
+// Read stdout from D
+func (a *Attack) Read() ([]byte, os.Error) {
+	b, err := a.cmd.ReadStdout()
 	if err != nil {
-		utils.Fatal(err)
+		return nil, utils.Error("failed to read stdout file", err)
 	}
-	fmt.Printf("done.\n")
 
-	if err := a.Run(); err != nil {
-		utils.Fatal(err)
-	}
+	return b, nil
 }
