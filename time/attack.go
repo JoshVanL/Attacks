@@ -38,11 +38,10 @@ type Attack struct {
 }
 
 type Samples struct {
-	xList         []*big.Int
-	tList         []*big.Int
-	cList         []*big.Int
-	floatTimeList []float64
-	messages      []*big.Int
+	xList    []*big.Int
+	tList    []*big.Int
+	fTList   []float64
+	messages []*big.Int
 }
 
 func NewAttack() (attack *Attack, err os.Error) {
@@ -117,26 +116,28 @@ func (a *Attack) Interact(c *big.Int) (m []byte, t *big.Int, err os.Error) {
 	return mb, t, nil
 }
 
-func (a *Attack) generate_samples(samplesN int) os.Error {
+func (a *Attack) generateSamples(samplesN int) os.Error {
 
 	fmt.Printf("Generating samples [%d]...", samplesN)
 
 	samples := new(Samples)
 	t, _ := a.mnt.Mul(big.NewInt(1), a.mnt.Ro2)
+	t, _ = a.mnt.Mul(t, t)
 
 	for i := 0; i < samplesN; i++ {
 		c := utils.RandInt(16, 128)
+
 		_, tt, err := a.Interact(c)
 		if err != nil {
 			return utils.Error("error interacting for samples", err)
 		}
-		samples.cList = utils.AppendBigInt(samples.cList, c)
-		samples.floatTimeList = utils.AppendFloat(samples.floatTimeList, utils.BigIntToFloat(tt))
-		xHat, _ := a.mnt.Mul(c, a.mnt.Ro2)
-		tTemp, _ := a.mnt.Mul(t, t)
-		tTemp, _ = a.mnt.Mul(tTemp, xHat)
-		samples.xList = utils.AppendBigInt(samples.xList, xHat)
-		samples.tList = utils.AppendBigInt(samples.tList, tTemp)
+		samples.fTList = utils.AppendFloat(samples.fTList, utils.BigIntToFloat(tt))
+
+		x, _ := a.mnt.Mul(c, a.mnt.Ro2)
+		samples.xList = utils.AppendBigInt(samples.xList, x)
+
+		tmp, _ := a.mnt.Mul(t, x)
+		samples.tList = utils.AppendBigInt(samples.tList, tmp)
 	}
 
 	a.samples = samples
@@ -146,22 +147,20 @@ func (a *Attack) generate_samples(samplesN int) os.Error {
 	return nil
 }
 
-func (a *Attack) find_key() (*big.Int, os.Error) {
+func (a *Attack) findKey() (*big.Int, os.Error) {
 	samplesN := INIT_SAMPLES
 
 	for i := 0; i < 30; i++ {
-		d, found, err := a.try_samples(samplesN)
-		if err != nil {
-			return nil, err
-		}
+		d, found := a.trySamples(samplesN)
 
 		if found {
 			return utils.BinaryStringToInt(d), nil
 		}
 
-		samplesN += 1000
 		fmt.Printf("\nFailed to find key with this set.\n")
-		if err := a.generate_samples(samplesN); err != nil {
+
+		samplesN += 1000
+		if err := a.generateSamples(samplesN); err != nil {
 			return nil, err
 		}
 
@@ -170,8 +169,9 @@ func (a *Attack) find_key() (*big.Int, os.Error) {
 	return nil, utils.NewError("failed after 30 sets of samples, giving up.")
 }
 
-func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) {
+func (a *Attack) trySamples(samplesN int) (d string, found bool) {
 	var diff float64
+
 	d = "1"
 	kSize := 1
 
@@ -191,16 +191,12 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 
 		wg := utils.NewWaitGroup(samplesN)
 
-		runtime.GOMAXPROCS(2)
-
 		for i := 0; i < samplesN; i++ {
 			go a.compute(i, wg)
 		}
 
 		runtime.Gosched()
 		go wg.Wait()
-
-		runtime.GOMAXPROCS(1)
 
 		diff0 := a.correlation(a.bit0_reds)
 		diff1 := a.correlation(a.bit1_reds)
@@ -220,42 +216,34 @@ func (a *Attack) try_samples(samplesN int) (d string, found bool, err os.Error) 
 		k1 := utils.BinaryStringToInt(fmt.Sprintf("%s1", d))
 		if new(big.Int).Exp(test_cipher, k1, a.conf.N).Cmp(test_message) == 0 {
 			d = fmt.Sprintf("%s1", d)
-			return d, true, nil
+			found = true
+			break
 		}
 
 		k0 := utils.BinaryStringToInt(fmt.Sprintf("%s0", d))
 		if new(big.Int).Exp(test_cipher, k0, a.conf.N).Cmp(test_message) == 0 {
 			d = fmt.Sprintf("%s0", d)
-			return d, true, nil
+			found = true
+			break
 		}
 
-		//092319C502A2F137
-		//092319C502A2F137
-		//092319C502A2F137
-		//092319C502A2F137
-		//092319C502A2F137
-		//092319C502A2F137
-		//092319C502A2F137
-
 		if diff < THRESHOLD {
-			return "", false, nil
+			found = false
+			break
 		}
 	}
 
-	return "", false, utils.NewError("couldn't find key")
+	return d, found
 }
 
 func (a *Attack) compute(i int, wg *utils.WaitGroup) {
-	t := a.samples.tList[i]
 
-	t0, _ := a.mnt.Mul(t, t)
-	a.tList0[i] = t0
+	a.tList0[i], _ = a.mnt.Mul(a.samples.tList[i], a.samples.tList[i])
 
-	t1, _ := a.mnt.Mul(t0, a.samples.xList[i])
-	a.tList1[i] = t1
+	a.tList1[i], _ = a.mnt.Mul(a.tList0[i], a.samples.xList[i])
 
-	_, red0 := a.mnt.Mul(t0, t0)
-	_, red1 := a.mnt.Mul(t1, t1)
+	_, red0 := a.mnt.Mul(a.tList0[i], a.tList0[i])
+	_, red1 := a.mnt.Mul(a.tList1[i], a.tList1[i])
 
 	if red0 {
 		a.bit0_reds[i] = 1
@@ -275,40 +263,29 @@ func (a *Attack) compute(i int, wg *utils.WaitGroup) {
 }
 
 func (a *Attack) correlation(reds []float64) float64 {
-	EM := utils.AverageFloat(reds)
-	MEM := make([]float64, len(reds))
-	for i := range reds {
-		MEM[i] = reds[i] - EM
-	}
-
-	ET := utils.AverageFloat(a.samples.floatTimeList)
-	TET := make([]float64, len(a.samples.floatTimeList))
-	for i := range a.samples.floatTimeList {
-		TET[i] = a.samples.floatTimeList[i] - ET
-	}
-
 	var R float64
-	for i := range a.samples.floatTimeList {
-		R += MEM[i] * TET[i]
-	}
 
-	R = R / float64(len(a.samples.floatTimeList))
+	MM := make([]float64, len(reds))
+	TT := make([]float64, len(reds))
 
-	VM := make([]float64, len(reds))
+	EM := utils.AverageFloat(reds)
+	ET := utils.AverageFloat(a.samples.fTList)
+
 	for i := range reds {
-		VM[i] = math.Pow(reds[i]-EM, 2)
+		R += (reds[i] - EM) * (a.samples.fTList[i] - ET)
 	}
-	varM := utils.AverageFloat(VM)
 
-	VT := make([]float64, len(a.samples.floatTimeList))
-	for i := range a.samples.floatTimeList {
-		VT[i] = math.Pow(a.samples.floatTimeList[i]-ET, 2)
+	R = R / float64(len(reds))
+
+	for i := range reds {
+		MM[i] = math.Pow(reds[i]-EM, 2)
+		TT[i] = math.Pow(a.samples.fTList[i]-ET, 2)
 	}
-	varT := utils.AverageFloat(VT)
 
-	varMT := math.Sqrt(varM * varT)
+	varM := utils.AverageFloat(MM)
+	varT := utils.AverageFloat(TT)
 
-	return R / varMT
+	return R / math.Sqrt(varM*varT)
 }
 
 func (a *Attack) printProgess(size int, diff float64, k string) {
@@ -325,14 +302,14 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
-	if err := a.generate_samples(INIT_SAMPLES); err != nil {
+	if err := a.generateSamples(INIT_SAMPLES); err != nil {
 		return utils.Error("failed to generate samples", err)
 	}
 
 	now := time.Nanoseconds()
 
 	fmt.Printf("Finding key...\n")
-	d, err := a.find_key()
+	d, err := a.findKey()
 	if err != nil {
 		return utils.Error("error finding key", err)
 	}
@@ -353,6 +330,8 @@ func main() {
 		utils.Fatal(err)
 	}
 	fmt.Printf("done.\n")
+
+	runtime.GOMAXPROCS(2)
 
 	if err := a.Run(); err != nil {
 		utils.Fatal(err)

@@ -123,27 +123,8 @@ func (m *Montgomery) Mul(x, y *big.Int) (r *big.Int, red bool) {
 		r.Add(r, yix)
 		r.Add(r, uiN)
 
-		rBytes := r.Bytes()
-		r.SetBytes(rBytes[0:(len(rBytes) - BYTES_PER_LIMB)])
+		r = new(big.Int).Rsh(r, LIMB_SIZE)
 	}
-
-	red = false
-	if r.Cmp(m.n) >= 0 {
-		r.Sub(r, m.n)
-		red = true
-	}
-
-	return r, red
-}
-
-func (m *Montgomery) RedMul(x, y *big.Int) (r *big.Int, red bool) {
-	xy := new(big.Int).Mul(x, y)
-	r = new(big.Int)
-	r.Mul(xy, m.o)
-	r.Mod(r, m.Ro)
-	r.Mul(r, m.n)
-	r.Add(r, xy)
-	r, _ = new(big.Int).Div(r, m.Ro)
 
 	red = false
 	if r.Cmp(m.n) >= 0 {
@@ -246,12 +227,6 @@ func getLimb(z *big.Int, s int) *big.Int {
 	e := len(b) - (s * BYTES_PER_LIMB)
 	s = len(b) - BYTES_PER_LIMB - (s * BYTES_PER_LIMB)
 
-	if e > len(b) {
-		e = len(b)
-	}
-	if e < 0 {
-		e = 0
-	}
 	if s < 0 {
 		s = 0
 	}
@@ -259,11 +234,4 @@ func getLimb(z *big.Int, s int) *big.Int {
 	return new(big.Int).SetBytes(b[s:e])
 }
 
-func ceilDiv(x, y int) int {
-	r := x / y
-	if x%y > 0 {
-		r++
-	}
-
-	return r
-}
+func ceilDiv(x, y int) int { return (x + y - 1) / y }
