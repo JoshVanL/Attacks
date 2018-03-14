@@ -93,7 +93,6 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 	fmt.Printf("done.\n")
-	fmt.Printf("F1: %s\n", f1.String())
 
 	fmt.Printf("Finding F2...")
 	f2, err := a.findF2(f1)
@@ -101,7 +100,6 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 	fmt.Printf("done.\n")
-	fmt.Printf("F2: %s\n", f2.String())
 
 	fmt.Printf("Finding EM...")
 	em, err := a.findEM(f2)
@@ -128,6 +126,9 @@ func (a *Attack) Run() os.Error {
 	}
 
 	fmt.Printf("Attack Complete.\n")
+	fmt.Printf("F1: [%s]\n", f1.String())
+	fmt.Printf("F2: [%s]\n", f2.String())
+	fmt.Printf("EM: [%s]\n", em.String())
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
 
 	fmt.Printf("Target material: [%X]\n", M)

@@ -8,7 +8,7 @@ help:
 
 all: oaep time
 
-build: all
+build: oaep time
 
 oaep:
 	./build.sh pkg/utils.go pkg/montgomery.go pkg/file.go pkg/oaep_c.go pkg/command.go oaep/attack.go

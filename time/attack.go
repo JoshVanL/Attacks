@@ -95,6 +95,8 @@ func NewAttack() (attack *Attack, err os.Error) {
 
 // Main attack run function
 func (a *Attack) Run() os.Error {
+	fmt.Printf("Executing Attack.\n")
+
 	if err := a.cmd.Run(); err != nil {
 		return err
 	}
@@ -110,7 +112,7 @@ func (a *Attack) Run() os.Error {
 	if err != nil {
 		return utils.Error("error finding key", err)
 	}
-	fmt.Printf("\nKey found.\n")
+	fmt.Printf("\nKey found and tested.\n")
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
 
@@ -206,6 +208,7 @@ func (a *Attack) trySamples(samplesN int) (d string, found bool) {
 		runtime.Gosched()
 		go wg.Wait()
 
+		// Calculate difference using correlation
 		diff0 := a.correlation(a.bit0_reds)
 		diff1 := a.correlation(a.bit1_reds)
 
