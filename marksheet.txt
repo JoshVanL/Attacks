@@ -125,6 +125,9 @@ achieved with:
 
     `$ make all`
 
+Both attack executables will be built to ./oaep/attack and ./time/attack
+respectively.
+
 The Go package file structure of both attacks are as follows:
 
     ./oaep/attack.go ---- main oaep attack execution functions.

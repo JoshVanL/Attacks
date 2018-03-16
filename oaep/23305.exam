@@ -32,7 +32,7 @@ Stage 2 is to calculate f2.
 We set f2  = floor((N + B)/B * f1/2 = 28
 (f2^e * c)^d mod N
 (28^5 * 888)^1373 mod 3551 = 3444 >= B; f2 = 30
-(30^5 * 888)^1373 mod 3551 = 139 < B; stage 2 complete
+(30^5 * 888)^1373 mod 3551 = 139 < B; stage 2 complete.
 f2: 30
 
 Step 3 is to close two bounds related to f2 until these two bounds match.
