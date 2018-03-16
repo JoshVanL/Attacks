@@ -59,10 +59,3 @@ reading, decreasing correlation.
 Q.6 Let n denote the number of simulated clock cycles required to execute a
     Montgomery multiplication on the attack target.  Estimate the value of
     n (as accurately as you can) and explain how you did so.
-
-By calculating the average difference of clock cycles of an exponent of 0 and 1,
-using the simulated replica, I am able to estimate the clock cycles required for
-a Montgomery multiplication. Using 2000 randomly generated ciphertexts an
-exponent of 0 gave 11338 and an exponent of 1 gave 15114 meaning that a
-Montgomery multiplication can be estimated as being 11338 - 15114 so n ~= 3776
-clock cycles.
