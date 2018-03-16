@@ -1,14 +1,75 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
+
 Q.1 The vendor of the attack target is concerned that news of this attack
     could scare off potential customers; they will make any alteration
     necessary (in software or hardware) to prevent the attack.  Explain the
     options they have, and which one you would recommend.
+
+One option in preventing distinguishing when a reduction has occurred or not is
+to apply a modulo N on every Montgomery multiplication, regardles if needed, to
+try to enforce a constant time and prevent leaking of information about the key.
+This may still be vulnerable to other timing attacks however.
+
+Another option is to the Chinese Remainder theorem to calculate the exponential
+however other timing attacks are possible[1].
+
+The best option which I would recommend is to use a blinding to the RSA
+algorithm. This involves multiplying the message or ciphertext by a blinding
+value before the modular exponentiation, then multiplying the inverse
+afterwards. This means that an advisory is unable to simulate the exponentiation
+without these secret values, preventing a timing attack.
+
+Although computationally more effort, blinding is my recommend approach to
+preventing this attack.
+
+ref:
+[1] A Timing Attack against RSA with the Chinese Remainder Theorem
+    Werner Schindler
+    https://tls.mbed.org/public/WSchindler-RSA_Timing_Attack.pdf
+
+--------------------------------------------------------------------------------
+
 Q.2 The vendor of the attack target is concerned that a similar attack may
     also apply to their implementation of ElGamal encryption.  Explain the
     potential for such an attack, and how it differs wrt.  the case of RSA.
+
+Since ElGamal also uses exponentiation this attack can also be applied however
+to only decryption. ElGamel encryption uses a random secret y during computation
+and so the advisory is unable to simulate the computation.
+
+Although a timing attack is feasible to attack the decryption, since the
+decryption computation uses several Montgomery multiplications at each step,
+there is a larger differential and therefore more difficult to execute.
+
+---------------------------------------------------------------------------------
+
 Q.5 The level of noise, n, within measurements of execution time will
     influence the number of measurements, m, required for a successful
     attack.  Explain what the relationship between n and m is (i.e., how
     you expect m to grow as n grows).
+
+By using correlation to calculate the difference in timings, the relationship of
+the number of needed measurements m is exponential to the level of noise n. This
+is because a far greater number of measurements are required to differentiate
+readings that are more similar due to noise, increasing the variance of each
+reading, decreasing correlation.
+
+---------------------------------------------------------------------------------
+
 Q.6 Let n denote the number of simulated clock cycles required to execute a
     Montgomery multiplication on the attack target.  Estimate the value of
     n (as accurately as you can) and explain how you did so.
+
+By calculating the average difference of clock cycles of an exponent of 0 and 1,
+using the simulated replica, I am able to estimate the clock cycles required for
+a Montgomery multiplication. Using 2000 randomly generated cipher texts an
+exponent of 0 gave 11338 and an exponent of 1 gave 15114 meaning that a
+Montgomery multiplication can be estimated as being 11338 - 15114 = 3776 clock
+cycles.

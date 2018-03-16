@@ -16,8 +16,8 @@
 So that we can calibrate and improve the assignment in the future, give us
 a rough idea how long (in hours) you spent on it *in total*:
 
-effort : stage 1 -> [20] hours
-effort : stage 2 -> [20] hours
+effort : stage 1 -> [22] hours
+effort : stage 2 -> [22] hours
 effort : stage 3 -> [...] hours
 effort : stage 4 -> [...] hours
 
@@ -144,6 +144,9 @@ increased the maximum number of CPUs go routines can execute on to 2. Although
 tested on lab machines, if for whatever reason the program does crash due to go
 routine errors, please comment out line 63 in time/attack.go:
 `runtime.GOMAXPROCS(2)`. This will ensure a single CPU is used for computation.
+
+The time attack will re-compute a new, larger set of samples when the current
+set fails by a very low or negative correlation.
 
 ]
 

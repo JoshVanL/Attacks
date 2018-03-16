@@ -12,8 +12,8 @@ import (
 	"big"
 	"os"
 
-	"./utils"
 	"./file"
+	"./utils"
 )
 
 type Conf struct {

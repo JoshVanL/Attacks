@@ -9,19 +9,19 @@
 package main
 
 import (
-	"fmt"
 	"big"
-	"encoding/hex"
 	"bytes"
+	"encoding/hex"
+	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"time"
-	"math"
 
-	"./utils"
-	"./time_c"
 	"./command"
 	"./montgomery"
+	"./time_c"
+	"./utils"
 )
 
 const (
@@ -85,11 +85,11 @@ func NewAttack() (attack *Attack, err os.Error) {
 	}
 
 	return &Attack{
-		conf: conf,
-		cmd: cmd,
-		interactions: 0,
-		mnt: montgomery.NewMontgomery(conf.N),
-	},
+			conf:         conf,
+			cmd:          cmd,
+			interactions: 0,
+			mnt:          montgomery.NewMontgomery(conf.N),
+		},
 		nil
 }
 
@@ -144,7 +144,6 @@ func (a *Attack) findKey() (*big.Int, os.Error) {
 
 	return nil, utils.NewError("failed after 30 sets of samples, giving up.")
 }
-
 
 // Generate random samples for use in attack
 func (a *Attack) generateSamples(samplesN int) os.Error {

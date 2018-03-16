@@ -9,10 +9,10 @@
 package file
 
 import (
-	"os"
+	"big"
 	"bufio"
 	"fmt"
-	"big"
+	"os"
 	"syscall"
 
 	"./utils"
@@ -22,7 +22,6 @@ const (
 	NewLine = byte(10)
 	Base    = 16
 )
-
 
 type FileReader struct {
 	file     *os.File
@@ -38,10 +37,10 @@ func NewFileReader(filename string) (*FileReader, os.Error) {
 	}
 
 	return &FileReader{
-		file: f,
-		filename: filename,
-		reader: bufio.NewReader(f),
-	},
+			file:     f,
+			filename: filename,
+			reader:   bufio.NewReader(f),
+		},
 		nil
 }
 

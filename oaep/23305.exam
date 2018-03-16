@@ -1,10 +1,103 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
+
 Q.1 Consider the parameters N = 3551, e = 5, d = 1373, and c = 888, all
     represented in decimal.  Use them to explain, in your own words, the
     principle of this attack (e.g., how and why it works).
+
+This attack uses a chosen cipher text attack in which the advisory is able to
+converge toward the target material - plaintext message - by exploiting error
+codes the system responds with, exposing information about the relationship of
+the chosen ciphertext and message.
+
+Initially the adversary calculates:
+k, byte length of N = ceiling(log256(N)) = 2
+B = 2 ** 8(k - 1) = 256
+
+Next the advisory calculates f1 and f2 such that f1 ∈ [B, 2B) and f2 * m ∈ [N, N + B)
+Step 1 is to calulate f1.
+We set f1 = 2
+(f1^e * c)^d mod N
+(2^5 * 888)^1373 mod 3551 = 246 < B; f1 = 4
+(4^5 * 888)^1373 mod 3551 = 492 >= B; stage 1 complete.
+f1: 4
+
+Stage 2 is to calculate f2.
+We set f2  = floor((N + B)/B * f1/2 = 28
+(f2^e * c)^d mod N
+(28^5 * 888)^1373 mod 3551 = 3444 >= B; f2 = 30
+(30^5 * 888)^1373 mod 3551 = 139 < B; stage 2 complete
+f2: 30
+
+Step 3 is to close two bounds related to f2 until these two bounds match.
+Firstly calculate the lower and upper bounds:
+m_min = ceiling (N / f2) = ceiling (3551 / 30) = 119
+m_max = floor ((N + B) / f2)  = floor ((3551 + 256) / 28 = 126
+
+We now converge the two bounds until they match:
+
+ftmp = floor (2B / (m_max - m_min) = floor (512 / (126 - 119)) = 73
+i    = floor ((ftmp * m_min) / N) = ((73 * 119) / 3551) = 2
+f3   = ceiling ((i * N) / m_min) = ceiling ((2 * 3551) / 119) = 60
+(f3^e * c)^d mod N = (60^5 * 888)^1373 mod 3551 = 277 >= B
+m_min = ceiling ((i * N + B) / f3) = ceiling ((2 * 3551 + 256) / 60) = 123
+
+m_min = 123, m_max = 126
+ftmp = floor (2B / (m_max - m_min) = floor (512 / (126 - 123)) = 170
+i    = floor ((ftmp * m_min) / N) = ((170 * 123) / 3551) = 5
+f3   = ceiling ((i * N) / m_min) = ceiling ((5 * 3551) / 123) = 145
+(f3^e * c)^d mod N = (145^5 * 888)^1373 mod 3551 = 80 < B
+m_max = floor ((i * N + B) / f3)  = floor ((5 * 3551 + 256) / 145 = 124
+
+m_min = 123, m_max = 124
+ftmp = floor (2B / (m_max - m_min) = floor (512 / (124 - 123)) = 512
+i    = floor ((ftmp * m_min) / N) = ((512 * 123) / 3551) = 17
+f3   = ceiling ((i * N) / m_min) = ceiling ((17 * 3551) / 123) = 491
+(f3^e * c)^d mod N = (491^5 * 888)^1373 mod 3551 = 26 < B
+m_max = floor ((i * N + B) / f3)  = floor ((17 * 3551 + 256) / 491 = 123
+
+m_min = m_max so we have completed stage 3
+
+m = 123
+
+This can be tested by m^e mod N = 123^5 mod 3551 = 888 = c so correct.
+
+--------------------------------------------------------------------------
+
 Q.2 To prevent the attack, the vendor suggests altering the software: the
     idea is that no matter what error occurs, the same error code will be
     produced.  Explain whether (and why, or why not) this change alone is
     sufficient.
+
+Although this change will be able to prevent this attack in it's current form by
+masking which error has taken place, it will still be vulnerable if proper care
+is not taken as to when errors are returned to the user. A timing attack could
+be devised where the error could still be found if error 1 and error 2 return at
+different times. An advisory could determine these timings and still use this
+attack using statistical analysis. To prevent this side-channel attack, the
+vendor should ensure no information is leaked about the errors.
+
+--------------------------------------------------------------------------
+
 Q.5 Explain how the concept of plaintext awareness relates to this attack.
+
+RSAES-OAEP is a plaintext aware crypto system meaning that it is hard to create
+a valid ciphertext without knowing the corresponding plaintext message. This is
+the case since a label is used to validate the ciphertext. This does not matter
+in the case of this attack however since ensuring a valid label is not needed
+to execute the attack to find the plaintext message.
+
+---------------------------------------------------------------------------
+
 Q.7 Side-channel attacks are often categorised as being either simple or
     differential: how would categorise this attack, and why?
+
+This James Manger RSAES-OAEP attack is a simple side-channel attack since it
+does not require any statistical analysis to recover the target material.
+Instead, a linear algorithm is used to converge toward the target material.
