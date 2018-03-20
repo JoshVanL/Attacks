@@ -18,7 +18,7 @@ time: time/attack.go
 	./build.sh pkg/utils.go pkg/montgomery.go pkg/file.go pkg/time_c.go pkg/command.go time/attack.go
 
 fault: fault/attack.go
-	./build.sh pkg/utils.go pkg/file.go pkg/command.go fault/attack.go
+	./build.sh pkg/utils.go pkg/file.go pkg/fault_c.go pkg/command.go fault/attack.go
 
 clean:
 	rm -f oaep/attack

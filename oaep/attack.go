@@ -9,17 +9,17 @@
 package main
 
 import (
-	"time"
-	"bytes"
-	"fmt"
-	"encoding/hex"
-	"crypto/sha1"
 	"big"
+	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
 	"os"
+	"time"
 
+	"./command"
 	"./oaep_c"
 	"./utils"
-	"./command"
 )
 
 const (
@@ -69,10 +69,10 @@ func NewAttack() (attack *Attack, err os.Error) {
 	}
 
 	return &Attack{
-		conf: conf,
-		interactions: 0,
-		cmd: cmd,
-	},
+			conf:         conf,
+			interactions: 0,
+			cmd:          cmd,
+		},
 		nil
 }
 

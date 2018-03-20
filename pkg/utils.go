@@ -308,6 +308,16 @@ func BigIntToFloat(z *big.Int) float64 {
 	return float64(binary.BigEndian.Uint64(b))
 }
 
+func Contains(xs []int, x int) bool {
+	for _, i := range xs {
+		if x == i {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Wait group is a method of synchronisation of go routines
 func NewWaitGroup(n int) *WaitGroup {
 	return &WaitGroup{
