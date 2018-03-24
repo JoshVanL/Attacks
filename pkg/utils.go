@@ -318,6 +318,8 @@ func Contains(xs []int, x int) bool {
 	return false
 }
 
+func XORToInt(a byte, b int) int { return int(a ^ byte(b)) }
+
 // Wait group is a method of synchronisation of go routines
 func NewWaitGroup(n int) *WaitGroup {
 	return &WaitGroup{

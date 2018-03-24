@@ -25,6 +25,8 @@ import (
 
 const (
 	WORD_LENGTH = 16
+	KEY_RANGE   = 256
+	BYTES       = 16
 )
 
 type Attack struct {
@@ -74,8 +76,8 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
-	m := utils.RandInt(2, 128)
-	c, err := a.Interact(m, []byte{'\n'})
+	c := utils.RandInt(2, 128)
+	m, err := a.Interact(c, []byte{'\n'})
 	if err != nil {
 		return err
 	}
@@ -94,23 +96,48 @@ func (a *Attack) Run() os.Error {
 
 func (a *Attack) GenerateHypothesis(m *big.Int, c *big.Int) (*big.Int, os.Error) {
 	f := a.conf.BuildFault(8, 1, 0, 0, 0)
-	//fmt.Printf("%v\n", f)
-	//fmt.Printf("%s\n", f)
-	_, err := a.Interact(c, f)
+
+	m_f, err := a.Interact(c, f)
 	if err != nil {
 		return nil, err
 	}
 
-	//var div int
-	//for i := 0; i < 16; i++ {
-	//	if utils.Contains([]int{0, 2, 9, 11}, i) {
-	//		div = 1
-	//	} else if utils.Contains([]int{5, 7, 12, 14}, i) {
-	//		div = 2
-	//	} else {
-	//		div = 0
-	//	}
+	HV := make([][][]byte, BYTES)
+	for i := range HV {
+		HV[i] = make([][]byte, KEY_RANGE)
+	}
 
+	for i := 0; i < 16; i++ {
+		var d_mult []byte
+		if utils.Contains([]int{0, 2, 9, 11}, i) {
+			d_mult = a.conf.Delta2()
+		} else if utils.Contains([]int{5, 7, 12, 14}, i) {
+			d_mult = a.conf.Delta3()
+		} else if utils.Contains([]int{1, 3, 4, 6, 8, 10, 13, 15}, i) {
+			d_mult = a.conf.Delta1()
+		}
+
+		for k := 0; k < 256; k++ {
+			delt_i := a.conf.SBoxInv()[utils.XORToInt(m.Bytes()[i], k)] ^ a.conf.SBoxInv()[utils.XORToInt(m_f.Bytes()[i], k)]
+
+			for j, delt := range d_mult {
+				if delt_i == delt {
+					HV[i][j] = utils.AppendByte(HV[i][j], byte(k))
+				}
+			}
+		}
+	}
+
+	//hypotheses := make([][]byte, 4)
+
+	//for i := 0; i < KEY_RANGE; i++ {
+
+	//	for cnt, bytes := range [][]byte{[]byte{0, 13, 10, 7}, []byte{4, 1, 14, 11}, []byte{8, 5, 2, 15}, []byte{12, 9, 6, 3}} {
+	//		if (len(HV[bytes[0]][i]) > 1) && (len(HV[bytes[1]][i]) > 1) && (len(HV[bytes[2]][i]) > 1) && (len(HV[bytes[3]][i]) > 1) {
+
+	//		}
+
+	//	}
 	//}
 
 	//fmt.Printf("%s\n", m)
@@ -158,3 +185,5 @@ func (a *Attack) Read() (*big.Int, os.Error) {
 
 	return i, err
 }
+
+func printToHex(i *big.Int) { fmt.Printf("%X\n", i.Bytes()) }
