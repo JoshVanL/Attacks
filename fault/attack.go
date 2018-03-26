@@ -13,10 +13,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	//"math"
 	"os"
-	//"runtime"
-	//"time"
 
 	"./command"
 	"./fault_c"
@@ -62,10 +59,10 @@ func NewAttack() (*Attack, os.Error) {
 	}
 
 	return &Attack{
-		cmd: cmd,
-		interactions: 0,
-		conf: fault_c.NewConf(),
-	},
+			cmd:          cmd,
+			interactions: 0,
+			conf:         fault_c.NewConf(),
+		},
 		nil
 }
 
@@ -152,9 +149,6 @@ func (a *Attack) Interact(message *big.Int, fault []byte) (*big.Int, os.Error) {
 	hex.Encode(m, message.Bytes())
 	m = utils.Pad(bytes.AddByte(m, '\n'), WORD_LENGTH)
 
-	//fmt.Printf("%s\n", m)
-	//fmt.Printf("%v\n", fault)
-
 	if err := a.cmd.WriteStdin(fault); err != nil {
 		return nil, utils.Error("failed to write fault", err)
 	}
@@ -185,5 +179,3 @@ func (a *Attack) Read() (*big.Int, os.Error) {
 
 	return i, err
 }
-
-func printToHex(i *big.Int) { fmt.Printf("%X\n", i.Bytes()) }
