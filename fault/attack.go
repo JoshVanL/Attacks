@@ -25,7 +25,6 @@ import (
 const (
 	WORD_LENGTH = 16
 	KEY_RANGE   = 256
-	BYTES       = 16
 )
 
 type Attack struct {
@@ -83,14 +82,11 @@ func (a *Attack) Run() os.Error {
 	now := time.Nanoseconds()
 
 	fmt.Printf("Generating Initial Hypothesis...")
-	c := utils.RandInt(2, 128)
-	fmt.Printf("\n>>%X\n", c.Bytes())
-	m, err := a.Interact(c, []byte{'\n'})
+	m := utils.RandInt(2, 128)
+	c, err := a.Interact(m, []byte{'\n'})
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("\n%X\n", c.Bytes())
 
 	a.c_org = c
 	a.m_org = m
@@ -119,7 +115,7 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 	if !correct {
-		return utils.NewError("cipher text from message with key does not match.")
+		return utils.NewError("key incorrect, does not produce same texts")
 	}
 	fmt.Printf("done.\n")
 
@@ -132,66 +128,22 @@ func (a *Attack) Run() os.Error {
 }
 
 func (a *Attack) CheckKey(d *big.Int) (bool, os.Error) {
-	//tmp := make([]byte, len(d.Bytes()))
-	//for i := 0; i < len(d.Bytes()); i++ {
-	//	tmp[i] = d.Bytes()[len(d.Bytes())-1-i]
-	//}
 	k, err := aes.NewCipher(d.Bytes())
 	if err != nil {
 		return false, utils.Error("failed to construct AES key from key", err)
 	}
 
-	//m, err := a.Interact(a.c_org, []byte{'\n'})
-	//if err != nil {
-	//	return false, err
-	//}
+	m := make([]byte, WORD_LENGTH)
 
-	c := make([]byte, 16)
-	//foo := a.c_org.Bytes()
-	fmt.Printf("\n")
-	//fmt.Printf("%s\n", d.Bytes())
-	//f := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	//k.Reset()
-	//k.Encrypt(f, c)
-	//fmt.Printf("%v\n", c)
-	//tmp = c
-	//k.Decrypt(tmp, c)
-	//fmt.Printf("%v\n", f)
-	//fmt.Printf("%v\n", utils.HexToOct(c))
-
-	m, err := a.Interact(a.c_org, []byte{'\n'})
-	if err != nil {
-		return false, err
+	k.Decrypt(a.c_org.Bytes(), m)
+	if !a.sameBytes(m, a.m_org.Bytes()) {
+		return false, nil
 	}
-	fmt.Printf("%X\n", d.Bytes())
-	fmt.Printf("%X\n", m.Bytes())
-	fmt.Printf("%X\n", a.m_org.Bytes())
-	foo := make([]byte, len(a.c_org.Bytes())*2)
-	hex.Encode(foo, a.c_org.Bytes())
-	//fmt.Printf("%v\n", a.m_org.Bytes())
-	//fmt.Printf("%X\n", foo)
-	fmt.Printf("%X\n", foo)
-	//foo = bytes.AddByte(foo, '\n')
-	//fmt.Printf("%v\n", foo)
-	//fmt.Printf("%X\n", foo)
-	//k.Encrypt(a.m_org.Bytes(), c)
-	k.Decrypt(utils.HexToBytes(foo), c)
-	//k.Encrypt(a.m_org.Bytes(), c)
-	//foo, err := utils.BytesToInt(utils.TrimLeft(c))
-	//if err != nil {
-	//	return false, err
-	//}
-	//fmt.Printf("%X\n", foo.Bytes())
-	fmt.Printf("%X\n", c)
-	fmt.Printf("%X\n", a.c_org.Bytes())
 
-	//fmt.Printf("%X\n", tmp)
-	//fmt.Printf("%X\n", a.c_org.Bytes())
-	//fmt.Printf("%X\n", foo)
-	//fmt.Printf("%X\n", d.Bytes())
-	//fmt.Printf("%v\n", k.BlockSize())
-	//fmt.Printf("%v\n", len(d.Bytes()))
-	//fmt.Printf("%X\n", d.Bytes())
+	k.Encrypt(a.m_org.Bytes(), m)
+	if !a.sameBytes(m, a.c_org.Bytes()) {
+		return false, nil
+	}
 
 	return true, nil
 }
@@ -200,7 +152,7 @@ func (a *Attack) CheckKey(d *big.Int) (bool, os.Error) {
 func (a *Attack) ConstructKey(hypotheses [][][]byte) (*big.Int, os.Error) {
 	// Reconstruct
 	var off int
-	b := make([]byte, 16)
+	b := make([]byte, WORD_LENGTH)
 	for i := 0; i < 4; i++ {
 		for j := 0; j < 4; j++ {
 			b[(i*4)+j] = hypotheses[(i+j)%4][0][j]
@@ -262,7 +214,7 @@ func (a *Attack) calculateNextHypothosis(hypotheses [][][]byte) ([][][]byte, os.
 			for _, keys_current := range byte_current {
 				for _, keys_previous := range byte_previous {
 
-					if a.sameKey(keys_current, keys_previous) {
+					if a.sameBytes(keys_current, keys_previous) {
 						matching_keys = utils.AppendByte2(matching_keys, keys_current)
 					}
 
@@ -279,17 +231,17 @@ func (a *Attack) calculateNextHypothosis(hypotheses [][][]byte) ([][][]byte, os.
 func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, m_f *big.Int, err os.Error) {
 	f := a.conf.BuildFault(8, 1, 0, 0, 0)
 
-	m_f, err = a.Interact(a.c_org, f)
+	m_f, err = a.Interact(a.m_org, f)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	HV := make([][][]byte, BYTES)
+	HV := make([][][]byte, WORD_LENGTH)
 	for i := range HV {
 		HV[i] = make([][]byte, KEY_RANGE)
 	}
 
-	for i := 0; i < 16; i++ {
+	for i := 0; i < WORD_LENGTH; i++ {
 		var d_mult []byte
 		if utils.Contains([]int{0, 2, 9, 11}, i) {
 			d_mult = a.conf.Delta2()
@@ -300,7 +252,7 @@ func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, m_f *big.Int, err 
 		}
 
 		for k := 0; k < 256; k++ {
-			delt_i := a.conf.SBoxInv()[utils.XORToInt(a.m_org.Bytes()[i], k)]
+			delt_i := a.conf.SBoxInv()[utils.XORToInt(a.c_org.Bytes()[i], k)]
 			delt_i ^= a.conf.SBoxInv()[utils.XORToInt(m_f.Bytes()[i], k)]
 
 			for j, delt := range d_mult {
@@ -314,29 +266,16 @@ func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, m_f *big.Int, err 
 	return a.collectValidHypotheses(HV), m_f, nil
 }
 
-func (a *Attack) Interact(cipher *big.Int, fault []byte) (*big.Int, os.Error) {
-	m := make([]byte, len(cipher.Bytes())*2)
-	//m = bytes.AddByte(cipher.Bytes(), '\n')
-	hex.Encode(m, cipher.Bytes())
-	//fmt.Printf("\n")
-	//fmt.Printf("%v\n", cipher.Bytes())
-	//fmt.Printf("%X\n", cipher.Bytes())
-	//fmt.Printf("%v\n", m)
-	//fmt.Printf("%X\n", m)
-	//m = utils.Pad(bytes.AddByte(m, '\n'), WORD_LENGTH)
-	//m = utils.TrimLeft(m)
+func (a *Attack) Interact(message *big.Int, fault []byte) (*big.Int, os.Error) {
+	m := make([]byte, len(message.Bytes())*2)
+	hex.Encode(m, message.Bytes())
 	m = bytes.AddByte(m, '\n')
-	fmt.Printf(">>%X\n", m)
-	//fmt.Printf("%v\n", bytes.AddByte(cipher.Bytes(), '\n'))
-	//fmt.Printf("%X\n", m)
-	//fmt.Printf("%X\n", utils.HexToOct(m[0:len(m)-1]))
-	//fmt.Printf("\n")
 
 	if err := a.cmd.WriteStdin(fault); err != nil {
 		return nil, utils.Error("failed to write fault", err)
 	}
 	if err := a.cmd.WriteStdin(m); err != nil {
-		return nil, utils.Error("failed to write ciphertext", err)
+		return nil, utils.Error("failed to write message", err)
 	}
 
 	c, err := a.Read()
@@ -394,7 +333,7 @@ func (a *Attack) collectValidHypotheses(HV [][][]byte) [][][]byte {
 }
 
 
-func (a *Attack) sameKey(k1 []byte, k2 []byte) bool {
+func (a *Attack) sameBytes(k1 []byte, k2 []byte) bool {
 	if len(k1) != len(k2) {
 		return false
 	}
