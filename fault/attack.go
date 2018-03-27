@@ -9,7 +9,6 @@
 package main
 
 import (
-	"big"
 	"bytes"
 	"encoding/hex"
 	"crypto/aes"
@@ -32,9 +31,8 @@ type Attack struct {
 
 	conf *fault_c.Conf
 
-	c_org *big.Int
-	m_org *big.Int
-	b_m   []byte
+	c_org []byte
+	m_org []byte
 
 	interactions int
 }
@@ -82,7 +80,7 @@ func (a *Attack) Run() os.Error {
 	now := time.Nanoseconds()
 
 	fmt.Printf("Generating Initial Hypothesis...")
-	m := utils.RandInt(2, 128)
+	m := utils.RandInt(2, 128).Bytes()
 	c, err := a.Interact(m, []byte{'\n'})
 	if err != nil {
 		return err
@@ -91,7 +89,7 @@ func (a *Attack) Run() os.Error {
 	a.c_org = c
 	a.m_org = m
 
-	hypotheses, _, err := a.GenerateHypothesis()
+	hypotheses, err := a.GenerateHypothesis()
 	if err != nil {
 		return err
 	}
@@ -103,10 +101,7 @@ func (a *Attack) Run() os.Error {
 	}
 
 	fmt.Printf("Reconstructing Key...")
-	d, err := a.ConstructKey(h)
-	if err != nil {
-		return err
-	}
+	d := a.ConstructKey(h)
 	fmt.Printf("done.\n")
 
 	fmt.Printf("Checking Key...")
@@ -121,35 +116,72 @@ func (a *Attack) Run() os.Error {
 
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
-	fmt.Printf("Target material: [%X]\n", d.Bytes())
+	fmt.Printf("Target material: [%X]\n", d)
 	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
 
-func (a *Attack) CheckKey(d *big.Int) (bool, os.Error) {
-	k, err := aes.NewCipher(d.Bytes())
+
+func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, err os.Error) {
+	f := a.conf.BuildFault(8, 1, 0, 0, 0)
+
+	m_f, err := a.Interact(a.m_org, f)
 	if err != nil {
-		return false, utils.Error("failed to construct AES key from key", err)
+		return nil, err
 	}
 
-	m := make([]byte, WORD_LENGTH)
-
-	k.Decrypt(a.c_org.Bytes(), m)
-	if !a.sameBytes(m, a.m_org.Bytes()) {
-		return false, nil
+	HV := make([][][]byte, WORD_LENGTH)
+	for i := range HV {
+		HV[i] = make([][]byte, KEY_RANGE)
 	}
 
-	k.Encrypt(a.m_org.Bytes(), m)
-	if !a.sameBytes(m, a.c_org.Bytes()) {
-		return false, nil
+	for i := 0; i < WORD_LENGTH; i++ {
+		var d_mult []byte
+		if utils.Contains([]int{0, 2, 9, 11}, i) {
+			d_mult = a.conf.Delta2()
+		} else if utils.Contains([]int{5, 7, 12, 14}, i) {
+			d_mult = a.conf.Delta3()
+		} else if utils.Contains([]int{1, 3, 4, 6, 8, 10, 13, 15}, i) {
+			d_mult = a.conf.Delta1()
+		}
+
+		for k := 0; k < 256; k++ {
+			delt_i := a.conf.SBoxInv()[utils.XORToInt(a.c_org[i], k)]
+			delt_i ^= a.conf.SBoxInv()[utils.XORToInt(m_f[i], k)]
+
+			for j, delt := range d_mult {
+				if delt_i == delt {
+					HV[i][j] = utils.AppendByte(HV[i][j], byte(k))
+				}
+			}
+		}
 	}
 
-	return true, nil
+	return a.collectValidHypotheses(HV), nil
 }
 
+func (a *Attack) AttackFault(hypotheses [][][]byte) ([][][]byte, os.Error) {
+	var err os.Error
+	i := 1
 
-func (a *Attack) ConstructKey(hypotheses [][][]byte) (*big.Int, os.Error) {
+	for utils.MaxLen3ByteSlice(hypotheses) > 1 {
+		fmt.Printf("\rCalculating Next Hypothesis [%d]...", i)
+
+		hypotheses, err = a.calculateNextHypothosis(hypotheses)
+		if err != nil {
+			return nil, utils.Error(fmt.Sprintf("error calculating [%d] hypothesis", i), err)
+		}
+
+		i++
+	}
+
+	fmt.Printf("done.\n")
+
+	return hypotheses, nil
+}
+
+func (a *Attack) ConstructKey(hypotheses [][][]byte) []byte {
 	// Reconstruct
 	var off int
 	b := make([]byte, WORD_LENGTH)
@@ -176,31 +208,32 @@ func (a *Attack) ConstructKey(hypotheses [][][]byte) (*big.Int, os.Error) {
 		b[0] = a.conf.SBox()[b[13]] ^ b[0] ^ a.conf.RoundConstant()[i]
 	}
 
-	return new(big.Int).SetBytes(b), nil
+	return b
 }
 
-func (a *Attack) AttackFault(hypotheses [][][]byte) ([][][]byte, os.Error) {
-	var err os.Error
-	i := 1
-
-	for utils.MaxLen3ByteSlice(hypotheses) > 1 {
-		fmt.Printf("\rCalculating Next Hypothesis [%d]...", i)
-
-		hypotheses, err = a.calculateNextHypothosis(hypotheses)
-		if err != nil {
-			return nil, err
-		}
-
-		i++
+func (a *Attack) CheckKey(d []byte) (bool, os.Error) {
+	k, err := aes.NewCipher(d)
+	if err != nil {
+		return false, utils.Error("failed to construct AES key from key bytes", err)
 	}
 
-	fmt.Printf("done.\n")
+	m := make([]byte, WORD_LENGTH)
 
-	return hypotheses, nil
+	k.Decrypt(a.c_org, m)
+	if !a.sameBytes(m, a.m_org) {
+		return false, nil
+	}
+
+	k.Encrypt(a.m_org, m)
+	if !a.sameBytes(m, a.c_org) {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (a *Attack) calculateNextHypothosis(hypotheses [][][]byte) ([][][]byte, os.Error) {
-	curr_hypothesis, _, err := a.GenerateHypothesis()
+	curr_hypothesis, err := a.GenerateHypothesis()
 	if err != nil {
 		return nil, utils.Error("failed to generate current hypothesis", err)
 	}
@@ -228,85 +261,6 @@ func (a *Attack) calculateNextHypothosis(hypotheses [][][]byte) ([][][]byte, os.
 	return next_hypothesis, nil
 }
 
-func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, m_f *big.Int, err os.Error) {
-	f := a.conf.BuildFault(8, 1, 0, 0, 0)
-
-	m_f, err = a.Interact(a.m_org, f)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	HV := make([][][]byte, WORD_LENGTH)
-	for i := range HV {
-		HV[i] = make([][]byte, KEY_RANGE)
-	}
-
-	for i := 0; i < WORD_LENGTH; i++ {
-		var d_mult []byte
-		if utils.Contains([]int{0, 2, 9, 11}, i) {
-			d_mult = a.conf.Delta2()
-		} else if utils.Contains([]int{5, 7, 12, 14}, i) {
-			d_mult = a.conf.Delta3()
-		} else if utils.Contains([]int{1, 3, 4, 6, 8, 10, 13, 15}, i) {
-			d_mult = a.conf.Delta1()
-		}
-
-		for k := 0; k < 256; k++ {
-			delt_i := a.conf.SBoxInv()[utils.XORToInt(a.c_org.Bytes()[i], k)]
-			delt_i ^= a.conf.SBoxInv()[utils.XORToInt(m_f.Bytes()[i], k)]
-
-			for j, delt := range d_mult {
-				if delt_i == delt {
-					HV[i][j] = utils.AppendByte(HV[i][j], byte(k))
-				}
-			}
-		}
-	}
-
-	return a.collectValidHypotheses(HV), m_f, nil
-}
-
-func (a *Attack) Interact(message *big.Int, fault []byte) (*big.Int, os.Error) {
-	m := make([]byte, len(message.Bytes())*2)
-	hex.Encode(m, message.Bytes())
-	m = bytes.AddByte(m, '\n')
-
-	if err := a.cmd.WriteStdin(fault); err != nil {
-		return nil, utils.Error("failed to write fault", err)
-	}
-	if err := a.cmd.WriteStdin(m); err != nil {
-		return nil, utils.Error("failed to write message", err)
-	}
-
-	c, err := a.Read()
-	if err != nil {
-		return nil, err
-	}
-
-	a.interactions++
-
-	return c, nil
-}
-
-func (a *Attack) Read() (*big.Int, os.Error) {
-	m, err := a.cmd.ReadStdout()
-	if err != nil {
-		return nil, utils.Error("failed to read message", err)
-	}
-
-	if a.b_m == nil || len(a.b_m) == 0 {
-		a.b_m = utils.TrimLeft(m)
-		a.b_m = a.b_m[0 : len(a.b_m)-1]
-	}
-
-	i, err := utils.BytesToInt(utils.TrimLeft(m))
-	if err != nil {
-		return nil, utils.Error("failed to convert message to int", err)
-	}
-
-	return i, err
-}
-
 func (a *Attack) collectValidHypotheses(HV [][][]byte) [][][]byte {
 	hypotheses := make([][][]byte, 4)
 
@@ -332,6 +286,49 @@ func (a *Attack) collectValidHypotheses(HV [][][]byte) [][][]byte {
 	return hypotheses
 }
 
+func (a *Attack) Interact(message []byte, fault []byte) ([]byte, os.Error) {
+	m := make([]byte, len(message)*2)
+	hex.Encode(m, message)
+	m = bytes.AddByte(m, '\n')
+
+	if err := a.Write(fault, m); err != nil {
+		return nil, err
+	}
+
+	c, err := a.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	a.interactions++
+
+	return c, nil
+}
+
+func (a *Attack) Write(fault, message []byte) os.Error {
+	if err := a.cmd.WriteStdin(fault); err != nil {
+		return utils.Error("failed to write fault", err)
+	}
+	if err := a.cmd.WriteStdin(message); err != nil {
+		return utils.Error("failed to write message", err)
+	}
+
+	return nil
+}
+
+func (a *Attack) Read() ([]byte, os.Error) {
+	m, err := a.cmd.ReadStdout()
+	if err != nil {
+		return nil, utils.Error("failed to read message", err)
+	}
+
+	i, err := utils.BytesToInt(utils.TrimLeft(m))
+	if err != nil {
+		return nil, utils.Error("failed to convert message to int", err)
+	}
+
+	return i.Bytes(), err
+}
 
 func (a *Attack) sameBytes(k1 []byte, k2 []byte) bool {
 	if len(k1) != len(k2) {
