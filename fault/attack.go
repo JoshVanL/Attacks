@@ -35,6 +35,7 @@ type Attack struct {
 
 	c_org *big.Int
 	m_org *big.Int
+	b_m   []byte
 
 	interactions int
 }
@@ -83,10 +84,13 @@ func (a *Attack) Run() os.Error {
 
 	fmt.Printf("Generating Initial Hypothesis...")
 	c := utils.RandInt(2, 128)
+	fmt.Printf("\n>>%X\n", c.Bytes())
 	m, err := a.Interact(c, []byte{'\n'})
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("\n%X\n", c.Bytes())
 
 	a.c_org = c
 	a.m_org = m
@@ -128,17 +132,63 @@ func (a *Attack) Run() os.Error {
 }
 
 func (a *Attack) CheckKey(d *big.Int) (bool, os.Error) {
+	//tmp := make([]byte, len(d.Bytes()))
+	//for i := 0; i < len(d.Bytes()); i++ {
+	//	tmp[i] = d.Bytes()[len(d.Bytes())-1-i]
+	//}
 	k, err := aes.NewCipher(d.Bytes())
 	if err != nil {
 		return false, utils.Error("failed to construct AES key from key", err)
 	}
 
-	c := make([]byte, len(a.m_org.Bytes()))
-	k.Decrypt(a.c_org.Bytes(), c)
-	fmt.Printf("%X\n", c)
-	fmt.Printf("%X\n", a.m_org.Bytes())
-	fmt.Printf("%X\n", a.c_org.Bytes())
+	//m, err := a.Interact(a.c_org, []byte{'\n'})
+	//if err != nil {
+	//	return false, err
+	//}
+
+	c := make([]byte, 16)
+	//foo := a.c_org.Bytes()
+	fmt.Printf("\n")
+	//fmt.Printf("%s\n", d.Bytes())
+	//f := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	//k.Reset()
+	//k.Encrypt(f, c)
+	//fmt.Printf("%v\n", c)
+	//tmp = c
+	//k.Decrypt(tmp, c)
+	//fmt.Printf("%v\n", f)
+	//fmt.Printf("%v\n", utils.HexToOct(c))
+
+	m, err := a.Interact(a.c_org, []byte{'\n'})
+	if err != nil {
+		return false, err
+	}
 	fmt.Printf("%X\n", d.Bytes())
+	fmt.Printf("%X\n", m.Bytes())
+	fmt.Printf("%X\n", a.m_org.Bytes())
+	foo := make([]byte, len(a.c_org.Bytes())*2)
+	hex.Encode(foo, a.c_org.Bytes())
+	//fmt.Printf("%v\n", a.m_org.Bytes())
+	//fmt.Printf("%X\n", foo)
+	fmt.Printf("%X\n", foo)
+	//foo = bytes.AddByte(foo, '\n')
+	//fmt.Printf("%v\n", foo)
+	//fmt.Printf("%X\n", foo)
+	//k.Encrypt(a.m_org.Bytes(), c)
+	k.Decrypt(utils.HexToBytes(foo), c)
+	//k.Encrypt(a.m_org.Bytes(), c)
+	//foo, err := utils.BytesToInt(utils.TrimLeft(c))
+	//if err != nil {
+	//	return false, err
+	//}
+	//fmt.Printf("%X\n", foo.Bytes())
+	fmt.Printf("%X\n", c)
+	fmt.Printf("%X\n", a.c_org.Bytes())
+
+	//fmt.Printf("%X\n", tmp)
+	//fmt.Printf("%X\n", a.c_org.Bytes())
+	//fmt.Printf("%X\n", foo)
+	//fmt.Printf("%X\n", d.Bytes())
 	//fmt.Printf("%v\n", k.BlockSize())
 	//fmt.Printf("%v\n", len(d.Bytes()))
 	//fmt.Printf("%X\n", d.Bytes())
@@ -264,10 +314,23 @@ func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, m_f *big.Int, err 
 	return a.collectValidHypotheses(HV), m_f, nil
 }
 
-func (a *Attack) Interact(message *big.Int, fault []byte) (*big.Int, os.Error) {
-	m := make([]byte, len(message.Bytes())*2)
-	hex.Encode(m, message.Bytes())
-	m = utils.Pad(bytes.AddByte(m, '\n'), WORD_LENGTH)
+func (a *Attack) Interact(cipher *big.Int, fault []byte) (*big.Int, os.Error) {
+	m := make([]byte, len(cipher.Bytes())*2)
+	//m = bytes.AddByte(cipher.Bytes(), '\n')
+	hex.Encode(m, cipher.Bytes())
+	//fmt.Printf("\n")
+	//fmt.Printf("%v\n", cipher.Bytes())
+	//fmt.Printf("%X\n", cipher.Bytes())
+	//fmt.Printf("%v\n", m)
+	//fmt.Printf("%X\n", m)
+	//m = utils.Pad(bytes.AddByte(m, '\n'), WORD_LENGTH)
+	//m = utils.TrimLeft(m)
+	m = bytes.AddByte(m, '\n')
+	fmt.Printf(">>%X\n", m)
+	//fmt.Printf("%v\n", bytes.AddByte(cipher.Bytes(), '\n'))
+	//fmt.Printf("%X\n", m)
+	//fmt.Printf("%X\n", utils.HexToOct(m[0:len(m)-1]))
+	//fmt.Printf("\n")
 
 	if err := a.cmd.WriteStdin(fault); err != nil {
 		return nil, utils.Error("failed to write fault", err)
@@ -287,12 +350,17 @@ func (a *Attack) Interact(message *big.Int, fault []byte) (*big.Int, os.Error) {
 }
 
 func (a *Attack) Read() (*big.Int, os.Error) {
-	c, err := a.cmd.ReadStdout()
+	m, err := a.cmd.ReadStdout()
 	if err != nil {
 		return nil, utils.Error("failed to read message", err)
 	}
 
-	i, err := utils.BytesToInt(utils.TrimLeft(c))
+	if a.b_m == nil || len(a.b_m) == 0 {
+		a.b_m = utils.TrimLeft(m)
+		a.b_m = a.b_m[0 : len(a.b_m)-1]
+	}
+
+	i, err := utils.BytesToInt(utils.TrimLeft(m))
 	if err != nil {
 		return nil, utils.Error("failed to convert message to int", err)
 	}
