@@ -337,6 +337,18 @@ func (w *WaitGroup) Done() {
 
 func (w *WaitGroup) Wait() { <-w.stopCh }
 
+func MaxLen3ByteSlice(bs [][][]byte) int {
+	l := 0
+
+	for _, b := range bs {
+		if len(b) > l {
+			l = len(b)
+		}
+	}
+
+	return l
+}
+
 
 // Go has a built in function append which will append arbitrary slices
 // together.  Since this is a very old version, it doesn't even have that!
@@ -392,7 +404,7 @@ func AppendByteSlice(slice []byte, elems []byte) []byte {
 	return fresh
 }
 
-func AppendBytesSlices(slice [][]byte, elems []byte) [][]byte {
+func AppendByte2(slice [][]byte, elems []byte) [][]byte {
 	if len(slice) < cap(slice) {
 		slice = slice[0 : len(slice)+1]
 		slice[len(slice)-1] = elems
@@ -400,6 +412,19 @@ func AppendBytesSlices(slice [][]byte, elems []byte) [][]byte {
 	}
 
 	fresh := make([][]byte, len(slice)+1, cap(slice)*2+1)
+	copy(fresh, slice)
+	fresh[len(slice)] = elems
+	return fresh
+}
+
+func AppendByte3(slice [][][]byte, elems [][]byte) [][][]byte {
+	if len(slice) < cap(slice) {
+		slice = slice[0 : len(slice)+1]
+		slice[len(slice)-1] = elems
+		return slice
+	}
+
+	fresh := make([][][]byte, len(slice)+1, cap(slice)*2+1)
 	copy(fresh, slice)
 	fresh[len(slice)] = elems
 	return fresh

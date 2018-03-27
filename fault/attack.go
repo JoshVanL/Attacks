@@ -12,6 +12,7 @@ import (
 	"big"
 	"bytes"
 	"encoding/hex"
+	"reflect"
 	"fmt"
 	"os"
 
@@ -19,6 +20,9 @@ import (
 	"./fault_c"
 	"./utils"
 )
+
+//[[[161 232 6 106]] [[212 51 240 121] [170 196 66 235] [167 33 48 184]]
+//[[[161 232 6 106]] [[212 51 240 121]] [[170 196 66 235]] [[167 33 48 184]]]
 
 const (
 	WORD_LENGTH = 16
@@ -90,9 +94,6 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
-	//fmt.Printf("%d\n", len(hypotheses))
-	//fmt.Printf("%s\n", m_f)
-
 	_, err = a.AttackMultiFault(hypotheses)
 	if err != nil {
 		return err
@@ -105,33 +106,32 @@ func (a *Attack) Run() os.Error {
 	return nil
 }
 
-func (a *Attack) AttackMultiFault(hypotheses [][]byte) (k *big.Int, err os.Error) {
+func (a *Attack) AttackMultiFault(hypotheses [][][]byte) (k *big.Int, err os.Error) {
 
-	for a.maxByteLength(hypotheses) > 1 {
+	for utils.MaxLen3ByteSlice(hypotheses) > 1 {
 
 		curr_hypothesis, _, err := a.GenerateHypothesis()
 		if err != nil {
 			return nil, utils.Error("failed to generate current hypotheses", err)
 		}
 
-		var next_hypothesis [][]byte
+		var next_hypothesis [][][]byte
 
 		for _, byte_current := range curr_hypothesis {
 
-			var matching_keys []byte
+			var matching_keys [][]byte
 			for _, byte_previous := range hypotheses {
 				for _, keys_current := range byte_current {
 					for _, keys_previous := range byte_previous {
 
-						if keys_current == keys_previous {
-							//fmt.Printf("%T\n", keys_current)
-							matching_keys = utils.AppendByte(matching_keys, keys_current)
+						if reflect.DeepEqual(keys_current, keys_previous) {
+							matching_keys = utils.AppendByte2(matching_keys, keys_current)
 						}
 					}
 				}
 			}
 
-			next_hypothesis = utils.AppendBytesSlices(next_hypothesis, matching_keys)
+			next_hypothesis = utils.AppendByte3(next_hypothesis, matching_keys)
 		}
 
 		hypotheses = next_hypothesis
@@ -142,7 +142,7 @@ func (a *Attack) AttackMultiFault(hypotheses [][]byte) (k *big.Int, err os.Error
 	return nil, nil
 }
 
-func (a *Attack) GenerateHypothesis() (hypotheses [][]byte, m_f *big.Int, err os.Error) {
+func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, m_f *big.Int, err os.Error) {
 	f := a.conf.BuildFault(8, 1, 0, 0, 0)
 
 	m_f, err = a.Interact(a.c_org, f)
@@ -176,38 +176,25 @@ func (a *Attack) GenerateHypothesis() (hypotheses [][]byte, m_f *big.Int, err os
 		}
 	}
 
-	//fmt.Printf("%d\n", len(HV[0][0]))
-	hypotheses = make([][]byte, 4)
+	hypotheses = make([][][]byte, 4)
 
 	for cnt, bytes := range [][]byte{[]byte{0, 13, 10, 7}, []byte{4, 1, 14, 11}, []byte{8, 5, 2, 15}, []byte{12, 9, 6, 3}} {
 		for i := 0; i < KEY_RANGE; i++ {
 
 			if (len(HV[bytes[0]][i]) > 0) && (len(HV[bytes[1]][i]) > 0) && (len(HV[bytes[2]][i]) > 0) && (len(HV[bytes[3]][i]) > 0) {
 
-				//fmt.Printf("\n")
-				//fmt.Printf("%d\n", len(HV[bytes[0]][i]))
-				//fmt.Printf("%d\n", len(HV[bytes[1]][i]))
-				//fmt.Printf("%d\n", len(HV[bytes[2]][i]))
-				//fmt.Printf("%d\n", len(HV[bytes[3]][i]))
-				//fmt.Printf("\n")
-				// TODO: Fix this
-				//for j := 0; j < len(HV[bytes[1]][i]); j++ {
-				for j := 0; j < 2; j++ {
-					hyp := make([]byte, 4)
-					hyp[0] = HV[bytes[0]][i][j]
-					hyp[1] = HV[bytes[1]][i][j]
-					hyp[2] = HV[bytes[2]][i][j]
-					hyp[3] = HV[bytes[3]][i][j]
-					hypotheses[cnt] = utils.AppendByteSlice(hypotheses[cnt], hyp)
+				for _, key0 := range HV[bytes[0]][i] {
+					for _, key1 := range HV[bytes[1]][i] {
+						for _, key2 := range HV[bytes[2]][i] {
+							for _, key3 := range HV[bytes[3]][i] {
+								hypotheses[cnt] = utils.AppendByte2(hypotheses[cnt], []byte{key0, key1, key2, key3})
+							}
+						}
+					}
 				}
-				//fmt.Printf("%d\n", len(hypotheses[0]))
 			}
 		}
 	}
-
-	//fmt.Printf("%s\n", m)
-	//fmt.Printf("%s\n", c)
-	//fmt.Printf("%s\n", x)
 
 	return hypotheses, m_f, nil
 }
@@ -246,16 +233,4 @@ func (a *Attack) Read() (*big.Int, os.Error) {
 	}
 
 	return i, err
-}
-
-func (a *Attack) maxByteLength(bs [][]byte) int {
-	l := 0
-
-	for _, b := range bs {
-		if len(b) > l {
-			l = len(b)
-		}
-	}
-
-	return l
 }
