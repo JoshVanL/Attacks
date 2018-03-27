@@ -392,6 +392,19 @@ func AppendByteSlice(slice []byte, elems []byte) []byte {
 	return fresh
 }
 
+func AppendBytesSlices(slice [][]byte, elems []byte) [][]byte {
+	if len(slice) < cap(slice) {
+		slice = slice[0 : len(slice)+1]
+		slice[len(slice)-1] = elems
+		return slice
+	}
+
+	fresh := make([][]byte, len(slice)+1, cap(slice)*2+1)
+	copy(fresh, slice)
+	fresh[len(slice)] = elems
+	return fresh
+}
+
 func AppendBigInt(slice []*big.Int, elem *big.Int) []*big.Int {
 	if len(slice) < cap(slice) {
 		slice = slice[0 : len(slice)+1]
