@@ -317,14 +317,14 @@ func (a *Attack) Write(fault, message []byte) os.Error {
 }
 
 func (a *Attack) Read() ([]byte, os.Error) {
-	m, err := a.cmd.ReadStdout()
+	c, err := a.cmd.ReadStdout()
 	if err != nil {
-		return nil, utils.Error("failed to read message", err)
+		return nil, utils.Error("failed to read cipher text", err)
 	}
 
-	i, err := utils.BytesToInt(utils.TrimLeft(m))
+	i, err := utils.BytesToInt(utils.TrimLeft(c))
 	if err != nil {
-		return nil, utils.Error("failed to convert message to int", err)
+		return nil, utils.Error("failed to convert cipher text to int", err)
 	}
 
 	return i.Bytes(), err
