@@ -14,6 +14,7 @@ import (
 	"rand"
 	"os"
 	"encoding/binary"
+	"time"
 )
 
 const (
@@ -224,10 +225,11 @@ func HexToOct(hex []byte) []byte {
 
 // Generate a random big.Int of byte length x**e
 func RandInt(x, e int64) *big.Int {
+	rnd := rand.New(rand.NewSource(time.Nanoseconds()))
 	n := new(big.Int).Exp(big.NewInt(x), big.NewInt(e), nil)
 	b := make([]byte, len(n.Bytes()))
 	for i := range b {
-		b[i] = byte(rand.Intn(255))
+		b[i] = byte(rnd.Intn(255))
 	}
 
 	z := new(big.Int).SetBytes(b)
