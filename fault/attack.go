@@ -12,7 +12,7 @@ import (
 	"big"
 	"bytes"
 	"encoding/hex"
-	"reflect"
+	"time"
 	"fmt"
 	"os"
 
@@ -42,7 +42,7 @@ type Attack struct {
 }
 
 func main() {
-	fmt.Printf("Initalising attack...")
+	fmt.Printf("Initialising attack...")
 	a, err := NewAttack()
 	if err != nil {
 		utils.Fatal(err)
@@ -80,6 +80,8 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
+	now := time.Nanoseconds()
+
 	c := utils.RandInt(2, 128)
 	m, err := a.Interact(c, []byte{'\n'})
 	if err != nil {
@@ -89,10 +91,12 @@ func (a *Attack) Run() os.Error {
 	a.c_org = c
 	a.m_org = m
 
+	fmt.Printf("Generating Initial Hypothesis...")
 	hypotheses, _, err := a.GenerateHypothesis()
 	if err != nil {
 		return err
 	}
+	fmt.Printf("done.\n")
 
 	_, err = a.AttackMultiFault(hypotheses)
 	if err != nil {
@@ -103,12 +107,21 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 
+	fmt.Printf("Attack Complete.\n")
+	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
+	fmt.Printf("Interactions: %d\n", a.interactions)
+
 	return nil
 }
 
 func (a *Attack) AttackMultiFault(hypotheses [][][]byte) (k *big.Int, err os.Error) {
 
+	i := 1
+
 	for utils.MaxLen3ByteSlice(hypotheses) > 1 {
+
+		fmt.Printf("\rCalculating Next Hypothesis [%d]...", i)
+		i++
 
 		curr_hypothesis, _, err := a.GenerateHypothesis()
 		if err != nil {
@@ -124,9 +137,10 @@ func (a *Attack) AttackMultiFault(hypotheses [][][]byte) (k *big.Int, err os.Err
 				for _, keys_current := range byte_current {
 					for _, keys_previous := range byte_previous {
 
-						if reflect.DeepEqual(keys_current, keys_previous) {
+						if a.sameKey(keys_current, keys_previous) {
 							matching_keys = utils.AppendByte2(matching_keys, keys_current)
 						}
+
 					}
 				}
 			}
@@ -136,6 +150,8 @@ func (a *Attack) AttackMultiFault(hypotheses [][][]byte) (k *big.Int, err os.Err
 
 		hypotheses = next_hypothesis
 	}
+
+	fmt.Printf("done.\n")
 
 	fmt.Printf("%v\n", hypotheses)
 
@@ -233,4 +249,18 @@ func (a *Attack) Read() (*big.Int, os.Error) {
 	}
 
 	return i, err
+}
+
+func (a *Attack) sameKey(k1 []byte, k2 []byte) bool {
+	if len(k1) != len(k2) {
+		return false
+	}
+
+	for i := range k1 {
+		if k1[i] != k2[i] {
+			return false
+		}
+	}
+
+	return true
 }
