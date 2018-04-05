@@ -65,7 +65,7 @@ func (a *Attack) Run() os.Error {
 	}
 	defer a.cmd.Kill()
 
-	l, ss, m, err := a.Interact(5, big.NewInt(53).Bytes())
+	l, ss, m, err := a.Interact(254, big.NewInt(100).Bytes())
 	if err != nil {
 		return err
 	}
@@ -97,13 +97,14 @@ func (a *Attack) Interact(j int, i []byte) (l int, ss []int, m []byte, err os.Er
 }
 
 func (a *Attack) Write(blockAddr int, sectorAddr []byte) os.Error {
-	m := utils.Pad(bytes.AddByte(sectorAddr, '\n'), 32)
+	i := utils.Pad(bytes.AddByte(sectorAddr, '\n'), 32)
+	j := utils.AppendByte(utils.IntToBytes(blockAddr), '\n')
 
-	if err := a.cmd.WriteStdin([]byte{byte(blockAddr + 48), '\n'}); err != nil {
+	if err := a.cmd.WriteStdin(j); err != nil {
 		return utils.Error("failed to write block adress", err)
 	}
 
-	if err := a.cmd.WriteStdin(m); err != nil {
+	if err := a.cmd.WriteStdin(i); err != nil {
 		return utils.Error("failed to write sector address", err)
 	}
 

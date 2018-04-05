@@ -223,6 +223,24 @@ func HexToOct(hex []byte) []byte {
 	return b
 }
 
+func IntToBytes(i int) []byte {
+	var b []byte
+
+	if i > 99 {
+		b = AppendByte(b, byte((i/100)+48))
+		i %= 100
+	}
+
+	if i > 9 {
+		b = AppendByte(b, byte(i/10)+48)
+		i %= 10
+	}
+
+	b = AppendByte(b, byte(i)+48)
+
+	return b
+}
+
 // Generate a random big.Int of byte length x**e
 func RandInt(x, e int64) *big.Int {
 	rnd := rand.New(rand.NewSource(time.Nanoseconds()))
