@@ -368,6 +368,19 @@ func Append(slice []string, elem string) []string {
 	return fresh
 }
 
+func AppendInt(slice []int, elem int) []int {
+	if len(slice) < cap(slice) {
+		slice = slice[0 : len(slice)+1]
+		slice[len(slice)-1] = elem
+		return slice
+	}
+
+	fresh := make([]int, len(slice)+1, cap(slice)*2+1)
+	copy(fresh, slice)
+	fresh[len(slice)] = elem
+	return fresh
+}
+
 func AppendByte(slice []byte, elem byte) []byte {
 	if len(slice) < cap(slice) {
 		slice = slice[0 : len(slice)+1]

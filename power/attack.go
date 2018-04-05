@@ -9,25 +9,19 @@
 package main
 
 import (
-	"bytes"
-	"encoding/hex"
-	//"crypto/aes"
-	//"time"
 	"fmt"
 	"os"
+	"big"
+	"strings"
+	"bytes"
+	"strconv"
 
 	"./command"
-	//"./fault_c"
 	"./utils"
 )
 
 type Attack struct {
 	cmd *command.Command
-
-	//conf *fault_c.Conf
-
-	//c_org []byte
-	//m_org []byte
 
 	interactions int
 }
@@ -59,7 +53,6 @@ func NewAttack() (*Attack, os.Error) {
 	return &Attack{
 		cmd: cmd,
 		interactions: 0,
-		//conf: fault_c.NewConf(),
 	},
 		nil
 }
@@ -72,42 +65,41 @@ func (a *Attack) Run() os.Error {
 	}
 	defer a.cmd.Kill()
 
-	m, p, err := a.Interact(1, utils.RandInt(2, 200).Bytes())
+	l, ss, m, err := a.Interact(5, big.NewInt(53).Bytes())
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("%v\n", m)
-	fmt.Printf("%v\n", p)
+	if l != len(ss) {
+		return utils.NewError(fmt.Sprintf("l and length of trace, l=%d len(ss)=%d", l, len(ss)))
+	}
+
+	fmt.Printf("%d\n", len(ss))
+	fmt.Printf("%s\n", m)
+	fmt.Printf("%d\n", l)
 
 	return nil
 }
 
-func (a *Attack) Interact(j int, i []byte) ([]byte, []byte, os.Error) {
+func (a *Attack) Interact(j int, i []byte) (l int, ss []int, m []byte, err os.Error) {
 	if err := a.Write(j, i); err != nil {
-		return nil, nil, err
+		return -1, nil, nil, err
 	}
 
-	p, m, err := a.Read()
+	l, ss, m, err = a.Read()
 	if err != nil {
-		return nil, nil, err
+		return -1, nil, nil, err
 	}
 
 	a.interactions++
 
-	return p, m, nil
-
+	return l, ss, m, nil
 }
 
 func (a *Attack) Write(blockAddr int, sectorAddr []byte) os.Error {
-	fmt.Printf("%v\n", []byte{byte(blockAddr), '\n'})
-	fmt.Printf("%v\n", bytes.AddByte(sectorAddr, '\n'))
+	m := utils.Pad(bytes.AddByte(sectorAddr, '\n'), 32)
 
-	m := make([]byte, len(sectorAddr)*2)
-	hex.Encode(m, sectorAddr)
-	m = bytes.AddByte(m, '\n')
-
-	if err := a.cmd.WriteStdin([]byte{byte(blockAddr), '\n'}); err != nil {
+	if err := a.cmd.WriteStdin([]byte{byte(blockAddr + 48), '\n'}); err != nil {
 		return utils.Error("failed to write block adress", err)
 	}
 
@@ -118,21 +110,59 @@ func (a *Attack) Write(blockAddr int, sectorAddr []byte) os.Error {
 	return nil
 }
 
-func (a *Attack) Read() ([]byte, []byte, os.Error) {
+func (a *Attack) Read() (l int, ss []int, m []byte, err os.Error) {
 	p, err := a.cmd.ReadStdout()
 	if err != nil {
-		return nil, nil, utils.Error("failed to read power consumption", err)
+		return -1, nil, nil, utils.Error("failed to read power consumption", err)
 	}
 
-	m, err := a.cmd.ReadStdout()
+	str := strings.Split(fmt.Sprintf("%s", p), ",", 0)
+	l, err = strconv.Atoi(str[0])
 	if err != nil {
-		return nil, nil, utils.Error("failed to read message", err)
+		return -1, nil, nil, utils.Error("failed to convert power length integer string", err)
 	}
 
-	i, err := utils.BytesToInt(utils.TrimLeft(m))
-	if err != nil {
-		return nil, nil, utils.Error("failed to convert message to int", err)
+	start := 0
+	for i, b := range p {
+		if b == ',' {
+			start = i + 1
+			break
+		}
 	}
 
-	return p, i.Bytes(), err
+	var tmp int
+	for _, b := range p[start:] {
+		if b != ',' {
+			tmp = 10*tmp + (int(b) - 48)
+		} else {
+			ss = utils.AppendInt(ss, tmp)
+			tmp = 0
+		}
+	}
+
+	for {
+		p, err := a.cmd.ReadStdout()
+		if err != nil {
+			return -1, nil, nil, utils.Error("failed to read power consumption", err)
+		}
+		for i, b := range p {
+			if b == '\n' {
+				if tmp != 0 {
+					ss = utils.AppendInt(ss, tmp)
+				}
+				m = bytes.Split(p[i+1:], []byte{'\n'}, 0)[0]
+
+				return l, ss, m, nil
+			}
+
+			if b != ',' {
+				tmp = 10*tmp + (int(b) - 48)
+			} else {
+				ss = utils.AppendInt(ss, tmp)
+				tmp = 0
+			}
+		}
+	}
+
+	return
 }
