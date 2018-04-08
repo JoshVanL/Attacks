@@ -28,7 +28,7 @@ import (
 
 const (
 	Second    = int64(1e+9)
-	SamplesI  = 50
+	SamplesI  = 30
 	SamplesJ  = 1
 	SamplesIJ = SamplesI * SamplesJ
 
@@ -42,21 +42,20 @@ type Attack struct {
 	cmd  *command.Command
 	conf *power_c.Conf
 
-	//samples  []*Sample
-	samples  *Samples
-	keys     []byte
-	localCor float64
+	samples     []*Sample
+	keys        []byte
+	maxLocalCor float64
 
 	interactions int
 	mx           *sync.Mutex
 }
 
-type Samples struct {
+type Sample struct {
 	l  int
-	ss [][]int
-	m  [][]byte
-	//j  int
-	//i  *big.Int
+	ss []int
+	m  []byte
+	j  int
+	i  *big.Int
 }
 
 func main() {
@@ -132,18 +131,18 @@ func (a *Attack) FindKeyByte(H []Hyps) byte {
 
 	for i, h := range H {
 
-		a.localCor = float64(-10)
-		wg := utils.NewWaitGroup(a.samples.l)
+		a.maxLocalCor = float64(-10000)
+		wg := utils.NewWaitGroup(a.samples[0].l)
 
-		for j := 0; j < a.samples.l; j++ {
+		for j := 0; j < a.samples[0].l; j++ {
 			go a.findCorrelationAtTime(j, h, wg)
 		}
 
 		runtime.Gosched()
 		go wg.Wait()
 
-		if a.localCor > maxGlobalCor {
-			maxGlobalCor = a.localCor
+		if a.maxLocalCor > maxGlobalCor {
+			maxGlobalCor = a.maxLocalCor
 			keyIndex = i
 		}
 	}
@@ -162,19 +161,17 @@ func (a *Attack) FindKeyByte(H []Hyps) byte {
 }
 
 func (a *Attack) findCorrelationAtTime(j int, h Hyps, wg *utils.WaitGroup) {
-	//ss := make([]int, SamplesIJ)
-	//for k, sample := range a.samples.l {
-	//	ss[k] = sample.ss[j]
-	//}
+	ss := make([]int, len(a.samples))
+	for k, sample := range a.samples {
+		ss[k] = sample.ss[j]
+	}
 
-	c := a.Corrolation(h, a.samples.ss[j])
+	c := a.Corrolation(h, ss)
 
 	a.mx.Lock()
-	if c > a.localCor {
-		a.localCor = c
-		//fmt.Printf("%f\n", c)
+	if c > a.maxLocalCor {
+		a.maxLocalCor = c
 	}
-	//a.localCor += c
 	a.mx.Unlock()
 
 	wg.Done()
@@ -222,9 +219,8 @@ func (a *Attack) CalculateHypotheses() [][]Hyps {
 		H[i] = make([]Hyps, KeyGuesses)
 
 		for j := 0; j < KeyGuesses; j++ {
-			for k, m := range a.samples.m[i] {
-				//fmt.Printf("%d\n", k)
-				V[i][j][k] = a.conf.SBox()[a.keys[j]^m]
+			for k, sample := range a.samples {
+				V[i][j][k] = a.conf.SBox()[a.keys[j]^sample.m[i]]
 				H[i][j][k] = utils.HammingWeight(V[i][j][k])
 				//fmt.Printf("%v %v\n", V[i][j][k], H[i][j][k])
 			}
@@ -235,21 +231,16 @@ func (a *Attack) CalculateHypotheses() [][]Hyps {
 }
 
 func (a *Attack) GatherSamples() os.Error {
+	samples := make([]*Sample, SamplesIJ)
 
-	// Awkward memory allocation here for better memory access later
 	count := 0
-	samples := &Samples{
-		m: make([][]byte, KeyByteLength),
-	}
-
-	for i := range samples.m {
-		samples.m[i] = make([]byte, SamplesIJ)
-	}
 
 	for i := 0; i < SamplesI; i++ {
 		for j := 0; j < SamplesJ; j++ {
 
 			fmt.Printf("\rGathering Power Samples [%d]...", count)
+			count++
+
 			inum := big.NewInt(int64(i))
 
 			l, ss, m, err := a.Interact(j, inum.Bytes())
@@ -258,31 +249,18 @@ func (a *Attack) GatherSamples() os.Error {
 			}
 
 			if l != len(ss) {
-				return utils.NewError(fmt.Sprintf("l and length of trace do not match, l=%d len(ss)=%d", l, len(ss)))
+				return utils.NewError(fmt.Sprintf("l and length of trace, l=%d len(ss)=%d", l, len(ss)))
 			}
-			if l != samples.l && (j > 0 || i > 0) {
-				return utils.NewError(fmt.Sprintf("l inconsistent with other samples, l=%d samples.l=%d", l, samples.l))
-			}
-
-			if i == 0 && j == 0 {
-				samples.l = l
-				samples.ss = make([][]int, l)
-
-				for k := 0; k < l; k++ {
-					samples.ss[k] = make([]int, SamplesIJ)
-				}
-			}
-
-			for k := 0; k < l; k++ {
-				samples.ss[k][count] = ss[k]
-			}
-			for k := 0; k < KeyByteLength; k++ {
-				samples.m[k][count] = m[k]
-			}
-
-			count++
 
 			//137671
+
+			samples[i+SamplesI*j] = &Sample{
+				l: l,
+				ss: ss,
+				m: utils.HexToOct(m),
+				j: j,
+				i: inum,
+			}
 		}
 	}
 
