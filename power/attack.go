@@ -12,11 +12,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"runtime"
 	"big"
+	"math"
 	"time"
 	"strings"
 	"bytes"
 	"strconv"
+	"sync"
 
 	"./command"
 	"./power_c"
@@ -29,29 +32,31 @@ const (
 	SamplesJ  = 1
 	SamplesIJ = SamplesI * SamplesJ
 
-	KeyLengthByte  = 16
-	KeyLengthBit   = 128
-	KeyByteGuesses = 256
+	KeyByteLength = 16
+	KeyGuesses    = 256
 )
 
-//type KeyByte byte
+type Hyps [SamplesIJ]byte
 
 type Attack struct {
 	cmd  *command.Command
 	conf *power_c.Conf
 
-	samples []*Sample
-	keys    []byte
+	//samples  []*Sample
+	samples  *Samples
+	keys     []byte
+	localCor float64
 
 	interactions int
+	mx           *sync.Mutex
 }
 
-type Sample struct {
+type Samples struct {
 	l  int
-	ss []int
-	m  []byte
-	j  int
-	i  *big.Int
+	ss [][]int
+	m  [][]byte
+	//j  int
+	//i  *big.Int
 }
 
 func main() {
@@ -61,6 +66,8 @@ func main() {
 		utils.Fatal(err)
 	}
 	fmt.Printf("done.\n")
+
+	runtime.GOMAXPROCS(2)
 
 	if err := a.Run(); err != nil {
 		utils.Fatal(err)
@@ -78,8 +85,8 @@ func NewAttack() (*Attack, os.Error) {
 		return nil, err
 	}
 
-	keys := make([]byte, KeyByteGuesses)
-	for i := 0; i < KeyByteGuesses; i++ {
+	keys := make([]byte, KeyGuesses)
+	for i := 0; i < KeyGuesses; i++ {
 		keys[i] = byte(i)
 	}
 
@@ -88,6 +95,7 @@ func NewAttack() (*Attack, os.Error) {
 		conf: power_c.NewConf(),
 		keys: keys,
 		interactions: 0,
+		mx: new(sync.Mutex),
 	},
 		nil
 }
@@ -108,8 +116,9 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("done.\n")
 
 	fmt.Printf("Calculating Hypotheses...")
-	a.CalculateHypotheses()
+	h := a.CalculateHypotheses()
 	fmt.Printf("done.\n")
+	a.FindKeyByte(h[0])
 
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
@@ -117,7 +126,34 @@ func (a *Attack) Run() os.Error {
 	return nil
 }
 
-func (a *Attack) FindKeyByte(H [][]byte) byte {
+func (a *Attack) FindKeyByte(H []Hyps) byte {
+	maxGlobalCor := float64(-10000)
+	keyIndex := 0
+
+	for i, h := range H {
+
+		a.localCor = float64(-10)
+		wg := utils.NewWaitGroup(a.samples.l)
+
+		for j := 0; j < a.samples.l; j++ {
+			go a.findCorrelationAtTime(j, h, wg)
+		}
+
+		runtime.Gosched()
+		go wg.Wait()
+
+		if a.localCor > maxGlobalCor {
+			maxGlobalCor = a.localCor
+			keyIndex = i
+		}
+	}
+
+	fmt.Printf("%f\n", maxGlobalCor)
+	fmt.Printf("%d\n", keyIndex)
+
+	//for _, h := range H[0] {
+
+	//}
 	//for s := range a.samples {
 
 	//}
@@ -125,46 +161,95 @@ func (a *Attack) FindKeyByte(H [][]byte) byte {
 	return 0
 }
 
-func (a *Attack) Corrolation(h []byte, s []int) float64 {
-	//
+func (a *Attack) findCorrelationAtTime(j int, h Hyps, wg *utils.WaitGroup) {
+	//ss := make([]int, SamplesIJ)
+	//for k, sample := range a.samples.l {
+	//	ss[k] = sample.ss[j]
+	//}
 
-	return 0
+	c := a.Corrolation(h, a.samples.ss[j])
+
+	a.mx.Lock()
+	if c > a.localCor {
+		a.localCor = c
+		//fmt.Printf("%f\n", c)
+	}
+	//a.localCor += c
+	a.mx.Unlock()
+
+	wg.Done()
+	runtime.Goexit()
 }
 
-func (a *Attack) CalculateHypotheses() [][][]byte {
-	V := make([][][]byte, SamplesIJ)
-	H := make([][][]byte, SamplesIJ)
+func (a *Attack) Corrolation(h Hyps, t []int) float64 {
+	var R float64
+
+	hh := make([]float64, len(h))
+	tt := make([]float64, len(t))
+	for i := range h {
+		hh[i] = float64(h[i])
+		tt[i] = float64(t[i])
+	}
+
+	HH := make([]float64, len(hh))
+	TT := make([]float64, len(hh))
+	EH := utils.AverageFloat(hh)
+	ET := utils.AverageFloat(tt)
+
+	for i := range hh {
+		R += (hh[i] - EH) * (tt[i] - ET)
+	}
+
+	R = R / float64(len(hh))
+
+	for i := range hh {
+		HH[i] = math.Pow(hh[i]-EH, 2)
+		TT[i] = math.Pow(tt[i]-ET, 2)
+	}
+
+	varH := utils.AverageFloat(HH)
+	varT := utils.AverageFloat(TT)
+
+	return R / math.Sqrt(varH*varT)
+}
+
+func (a *Attack) CalculateHypotheses() [][]Hyps {
+	V := make([][]Hyps, KeyByteLength)
+	H := make([][]Hyps, KeyByteLength)
 
 	for i := range V {
-		V[i] = make([][]byte, KeyByteGuesses)
-		H[i] = make([][]byte, KeyByteGuesses)
+		V[i] = make([]Hyps, KeyGuesses)
+		H[i] = make([]Hyps, KeyGuesses)
 
-		for j := range V[i] {
-			V[i][j] = make([]byte, len(a.samples[i].m))
-			H[i][j] = make([]byte, len(a.samples[i].m))
-
-			for k, m := range a.samples[i].m {
+		for j := 0; j < KeyGuesses; j++ {
+			for k, m := range a.samples.m[i] {
+				//fmt.Printf("%d\n", k)
 				V[i][j][k] = a.conf.SBox()[a.keys[j]^m]
-				H[i][j][k] = V[i][j][k] & 1
+				H[i][j][k] = utils.HammingWeight(V[i][j][k])
+				//fmt.Printf("%v %v\n", V[i][j][k], H[i][j][k])
 			}
-			//fmt.Printf("%v %v\n", V[i][j], H[i][j])
 		}
 	}
 
-	return nil
+	return H
 }
 
 func (a *Attack) GatherSamples() os.Error {
-	samples := make([]*Sample, SamplesIJ)
 
+	// Awkward memory allocation here for better memory access later
 	count := 0
+	samples := &Samples{
+		m: make([][]byte, KeyByteLength),
+	}
+
+	for i := range samples.m {
+		samples.m[i] = make([]byte, SamplesIJ)
+	}
 
 	for i := 0; i < SamplesI; i++ {
 		for j := 0; j < SamplesJ; j++ {
 
 			fmt.Printf("\rGathering Power Samples [%d]...", count)
-			count++
-
 			inum := big.NewInt(int64(i))
 
 			l, ss, m, err := a.Interact(j, inum.Bytes())
@@ -173,18 +258,31 @@ func (a *Attack) GatherSamples() os.Error {
 			}
 
 			if l != len(ss) {
-				return utils.NewError(fmt.Sprintf("l and length of trace, l=%d len(ss)=%d", l, len(ss)))
+				return utils.NewError(fmt.Sprintf("l and length of trace do not match, l=%d len(ss)=%d", l, len(ss)))
 			}
+			if l != samples.l && (j > 0 || i > 0) {
+				return utils.NewError(fmt.Sprintf("l inconsistent with other samples, l=%d samples.l=%d", l, samples.l))
+			}
+
+			if i == 0 && j == 0 {
+				samples.l = l
+				samples.ss = make([][]int, l)
+
+				for k := 0; k < l; k++ {
+					samples.ss[k] = make([]int, SamplesIJ)
+				}
+			}
+
+			for k := 0; k < l; k++ {
+				samples.ss[k][count] = ss[k]
+			}
+			for k := 0; k < KeyByteLength; k++ {
+				samples.m[k][count] = m[k]
+			}
+
+			count++
 
 			//137671
-
-			samples[i+SamplesI*j] = &Sample{
-				l: l,
-				ss: ss,
-				m: utils.HexToOct(m),
-				j: j,
-				i: inum,
-			}
 		}
 	}
 
@@ -263,21 +361,21 @@ func (a *Attack) Read() (l int, ss []int, m []byte, err os.Error) {
 		}
 	}
 
-	stopCh := make(chan struct{})
+	//stopCh := make(chan struct{})
 
-	wg := utils.NewWaitGroup(1)
-	go func() {
-		ticker := time.NewTicker(Second * 3)
-		for {
-			select {
-			case <-ticker.C:
-				utils.Fatal(utils.NewError("reader time out"))
-			case <-stopCh:
-				wg.Done()
-				return
-			}
-		}
-	}()
+	//wg := utils.NewWaitGroup(1)
+	//go func() {
+	//	ticker := time.NewTicker(Second * 3)
+	//	for {
+	//		select {
+	//		case <-ticker.C:
+	//			utils.Fatal(utils.NewError("reader time out"))
+	//		case <-stopCh:
+	//			wg.Done()
+	//			return
+	//		}
+	//	}
+	//}()
 
 	for {
 		p, err := a.cmd.ReadStdout()
@@ -291,8 +389,8 @@ func (a *Attack) Read() (l int, ss []int, m []byte, err os.Error) {
 				}
 				m = bytes.Split(p[i+1:], []byte{'\n'}, 0)[0]
 
-				close(stopCh)
-				wg.Wait()
+				//close(stopCh)
+				//wg.Wait()
 				return l, ss, m, nil
 			}
 

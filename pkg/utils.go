@@ -106,6 +106,12 @@ func HexToBytes(hex []byte) []byte {
 	return b
 }
 
+func HammingWeight(v byte) byte {
+	v = (v & 0x55) + ((v >> 1) & 0x55)
+	v = (v & 0x33) + ((v >> 2) & 0x33)
+	return (v + (v >> 4)) & 0xF
+}
+
 // Trim byte slice left of white space
 func TrimLeft(bytes []byte) []byte {
 	s, e := 0, len(bytes)-1
