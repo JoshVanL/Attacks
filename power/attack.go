@@ -10,6 +10,7 @@ package main
 
 import (
 	"encoding/hex"
+	//"rand"
 	"fmt"
 	"os"
 	"runtime"
@@ -28,7 +29,7 @@ import (
 
 const (
 	Second    = int64(1e+9)
-	SamplesI  = 30
+	SamplesI  = 255
 	SamplesJ  = 1
 	SamplesIJ = SamplesI * SamplesJ
 
@@ -45,8 +46,10 @@ type Attack struct {
 	samples     []*Sample
 	keys        []byte
 	maxLocalCor float64
+	corrCount   int
 
 	interactions int
+	thej         int
 	mx           *sync.Mutex
 }
 
@@ -66,7 +69,7 @@ func main() {
 	}
 	fmt.Printf("done.\n")
 
-	runtime.GOMAXPROCS(2)
+	runtime.GOMAXPROCS(1)
 
 	if err := a.Run(); err != nil {
 		utils.Fatal(err)
@@ -115,9 +118,10 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("done.\n")
 
 	fmt.Printf("Calculating Hypotheses...")
-	h := a.CalculateHypotheses()
+	H := a.CalculateHypotheses()
 	fmt.Printf("done.\n")
-	a.FindKeyByte(h[0])
+
+	a.FindKey(H)
 
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
@@ -125,22 +129,41 @@ func (a *Attack) Run() os.Error {
 	return nil
 }
 
+func (a *Attack) FindKey(H [][]Hyps) {
+	for i := 0; i < KeyByteLength; i++ {
+		a.FindKeyByte(H[i])
+	}
+
+}
+
 func (a *Attack) FindKeyByte(H []Hyps) byte {
 	maxGlobalCor := float64(-10000)
 	keyIndex := 0
 
-	for i, h := range H {
+	for i := 0; i < KeyGuesses; i++ {
 
-		a.maxLocalCor = float64(-10000)
-		wg := utils.NewWaitGroup(a.samples[0].l)
+		fmt.Printf("\rTrying Key[%d]", a.keys[i])
 
-		for j := 0; j < a.samples[0].l; j++ {
-			go a.findCorrelationAtTime(j, h, wg)
+		//a.maxLocalCor = float64(-10000)
+		a.maxLocalCor = float64(0)
+		//wg := utils.NewWaitGroup(a.samples[0].l)
+		//wg := utils.NewWaitGroup(3000)
+
+		a.corrCount = 0
+		for j := 0; j < a.samples[0].l/20; j++ {
+			//for j := 200; j < a.samples[0].l/50; j++ {
+			//for j := a.samples[0].l - 1000; j >= a.samples[0].l-10000; j-- {
+			//for j := 0; j < 1500; j++ {
+			//go a.findCorrelationAtTime(j, h, wg)
+			a.findCorrelationAtTime(j, H[i])
 		}
 
-		runtime.Gosched()
-		go wg.Wait()
+		//runtime.Gosched()
+		//go wg.Wait()
+		//wg.Wait()
+		fmt.Printf("%d ", a.corrCount)
 
+		fmt.Printf("%f %d \n", a.maxLocalCor, a.thej)
 		if a.maxLocalCor > maxGlobalCor {
 			maxGlobalCor = a.maxLocalCor
 			keyIndex = i
@@ -160,22 +183,41 @@ func (a *Attack) FindKeyByte(H []Hyps) byte {
 	return 0
 }
 
-func (a *Attack) findCorrelationAtTime(j int, h Hyps, wg *utils.WaitGroup) {
-	ss := make([]int, len(a.samples))
+func (a *Attack) findCorrelationAtTime(j int, h Hyps) {
+	ss := make([]float64, len(a.samples))
+	hh := make([]float64, len(h))
+	//f := 0
+	//for k := len(a.samples) - 1; k > 0; k-- {
+	//	ss[f] = a.samples[k].ss[j]
+	//	//f++
+	//}
+
 	for k, sample := range a.samples {
-		ss[k] = sample.ss[j]
+		ss[k] = float64(sample.ss[j])
 	}
 
-	c := a.Corrolation(h, ss)
+	for k := range h {
+		hh[k] = float64(h[k])
+	}
+	//c := a.Corrolation(h, ss)
+	c := Correlation(hh, ss, nil)
+	//if c < 0 {
+	//	//fmt.Printf("%f\n", c)
+	//	c = -c
+	//}
 
-	a.mx.Lock()
-	if c > a.maxLocalCor {
+	//a.mx.Lock()
+	if c > a.maxLocalCor { // && c > 0.5 {
+		//if c > 0.5 {
 		a.maxLocalCor = c
+		a.thej = j
+		//a.maxLocalCor += c
+		a.corrCount++
 	}
-	a.mx.Unlock()
+	//a.mx.Unlock()
 
-	wg.Done()
-	runtime.Goexit()
+	//wg.Done()
+	//runtime.Goexit()
 }
 
 func (a *Attack) Corrolation(h Hyps, t []int) float64 {
@@ -188,8 +230,16 @@ func (a *Attack) Corrolation(h Hyps, t []int) float64 {
 		tt[i] = float64(t[i])
 	}
 
+	//c := 0
+	//for i := len(h) - 1; i >= 0; i-- {
+	//	hh[c] = float64(h[i])
+	//	c++
+	//}
+
 	HH := make([]float64, len(hh))
 	TT := make([]float64, len(hh))
+	//var HH float64
+	//var TT float64
 	EH := utils.AverageFloat(hh)
 	ET := utils.AverageFloat(tt)
 
@@ -202,12 +252,15 @@ func (a *Attack) Corrolation(h Hyps, t []int) float64 {
 	for i := range hh {
 		HH[i] = math.Pow(hh[i]-EH, 2)
 		TT[i] = math.Pow(tt[i]-ET, 2)
+		//HH += math.Pow(hh[i]-EH, 2)
+		//TT += math.Pow(tt[i]-ET, 2)
 	}
 
 	varH := utils.AverageFloat(HH)
 	varT := utils.AverageFloat(TT)
 
 	return R / math.Sqrt(varH*varT)
+	//return R / (math.Sqrt(HH) * math.Sqrt(TT))
 }
 
 func (a *Attack) CalculateHypotheses() [][]Hyps {
@@ -221,7 +274,11 @@ func (a *Attack) CalculateHypotheses() [][]Hyps {
 		for j := 0; j < KeyGuesses; j++ {
 			for k, sample := range a.samples {
 				V[i][j][k] = a.conf.SBox()[a.keys[j]^sample.m[i]]
+				//V[i][j][k] = a.conf.RoundConstant()[a.keys[j]^sample.m[i]]
 				H[i][j][k] = utils.HammingWeight(V[i][j][k])
+				//H[i][j][k] = V[i][j][k] & 1
+				//fmt.Printf("\n%v\n", V[i][j][k])
+				//fmt.Printf("%v\n", H[i][j][k])
 				//fmt.Printf("%v %v\n", V[i][j][k], H[i][j][k])
 			}
 		}
@@ -235,14 +292,17 @@ func (a *Attack) GatherSamples() os.Error {
 
 	count := 0
 
+	//rnd := rand.New(rand.NewSource(time.Nanoseconds()))
+
 	for i := 0; i < SamplesI; i++ {
 		for j := 0; j < SamplesJ; j++ {
 
 			fmt.Printf("\rGathering Power Samples [%d]...", count)
-			count++
 
 			inum := big.NewInt(int64(i))
+			//inum := utils.RandInt(2, 24)
 
+			//l, ss, m, err := a.Interact(rnd.Int()%255, inum.Bytes())
 			l, ss, m, err := a.Interact(j, inum.Bytes())
 			if err != nil {
 				return err
@@ -254,13 +314,29 @@ func (a *Attack) GatherSamples() os.Error {
 
 			//137671
 
-			samples[i+SamplesI*j] = &Sample{
+			//fmt.Printf("\n%s\n", m)
+			//fmt.Printf("%v\n", utils.HexToOct(m))
+			//os.Exit(1)
+			tmp := make([]byte, len(m))
+			kk := 0
+			for k := len(m) - 1; k >= 0; k-- {
+				tmp[kk] = m[k]
+				kk++
+			}
+
+			oct := make([]byte, len(m)/2)
+			hex.Decode(oct, m)
+			//fmt.Printf("\n%v\n", oct)
+			//fmt.Printf("%v\n", tmp)
+
+			samples[count] = &Sample{
 				l: l,
 				ss: ss,
-				m: utils.HexToOct(m),
+				m: oct,
 				j: j,
 				i: inum,
 			}
+			count++
 		}
 	}
 
@@ -382,4 +458,66 @@ func (a *Attack) Read() (l int, ss []int, m []byte, err os.Error) {
 	}
 
 	return
+}
+func Correlation(x, y, weights []float64) float64 {
+	// This is a two-pass corrected implementation.  It is an adaptation of the
+	// algorithm used in the MeanVariance function, which applies a correction
+	// to the typical two pass approach.
+
+	if len(x) != len(y) {
+		panic("stat: slice length mismatch")
+	}
+	xu := utils.AverageFloat(x)
+	yu := utils.AverageFloat(y)
+	var (
+		sxx           float64
+		syy           float64
+		sxy           float64
+		xcompensation float64
+		ycompensation float64
+	)
+	if weights == nil {
+		for i, xv := range x {
+			yv := y[i]
+			xd := xv - xu
+			yd := yv - yu
+			sxx += xd * xd
+			syy += yd * yd
+			sxy += xd * yd
+			xcompensation += xd
+			ycompensation += yd
+		}
+		// xcompensation and ycompensation are from Chan, et. al.
+		// referenced in the MeanVariance function.  They are analogous
+		// to the second term in (1.7) in that paper.
+		sxx -= xcompensation * xcompensation / float64(len(x))
+		syy -= ycompensation * ycompensation / float64(len(x))
+
+		return (sxy - xcompensation*ycompensation/float64(len(x))) / math.Sqrt(sxx*syy)
+
+	}
+
+	var sumWeights float64
+	for i, xv := range x {
+		w := weights[i]
+		yv := y[i]
+		xd := xv - xu
+		wxd := w * xd
+		yd := yv - yu
+		wyd := w * yd
+		sxx += wxd * xd
+		syy += wyd * yd
+		sxy += wxd * yd
+		xcompensation += wxd
+		ycompensation += wyd
+		sumWeights += w
+	}
+	// xcompensation and ycompensation are from Chan, et. al.
+	// referenced in the MeanVariance function.  They are analogous
+	// to the second term in (1.7) in that paper, except they use
+	// the sumWeights instead of the sample count.
+	sxx -= xcompensation * xcompensation / sumWeights
+	syy -= ycompensation * ycompensation / sumWeights
+
+	return (sxy - xcompensation*ycompensation/sumWeights) / math.Sqrt(sxx*syy)
 }
