@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"big"
+	//"big"
 	"math"
 	"time"
 	"strings"
@@ -29,12 +29,14 @@ import (
 
 const (
 	Second    = int64(1e+9)
-	SamplesI  = 50
-	SamplesJ  = 2
+	SamplesI  = 40
+	SamplesJ  = 1
 	SamplesIJ = SamplesI * SamplesJ
 
 	KeyByteLength = 16
 	KeyGuesses    = 256
+
+	CHUNKSIZE = 4
 )
 
 type Hyps [SamplesIJ]byte
@@ -65,6 +67,14 @@ type Sample struct {
 }
 
 func main() {
+	//foo := []float64{4, 4, 4, 6, 2, 5, 5, 6, 4, 4, 4, 5, 2, 4, 6, 5, 4, 4, 6, 5}
+	//boo := []float64{3, 0, 7, 5, 5, 4, 9, 2, 2, 5, 7, 8, 0, 5, 6, 5, 7, 9, 6, 9}
+
+	//c := Pearson(foo, boo)
+	//fmt.Printf("%f\n", c)
+
+	//os.Exit(0)
+
 	fmt.Printf("Initialising attack...")
 	a, err := NewAttack()
 	if err != nil {
@@ -163,12 +173,18 @@ func (a *Attack) FindKeyByte(H []Hyps, index int) byte {
 		//wg := utils.NewWaitGroup(3000)
 
 		a.corrCount = 0
-		for j := 1000; j < a.samples[0].l/40; j++ {
+		//for j := 1000; j < a.samples[0].l/40; j++ {
+		for j := 0; j < 750; j++ {
+			//for k := j*
+			//for j := 0; j < 4; j++ {
+			//	for k := j * CHUNKSIZE; k < (j+1)*CHUNKSIZE; k++ {
+			//for j := 0; j < a.samples[0].l; j++ {
 			//for j := 200; j < a.samples[0].l/50; j++ {
 			//for j := a.samples[0].l - 1000; j >= a.samples[0].l-10000; j-- {
 			//for j := 0; j < 1500; j++ {
 			//go a.findCorrelationAtTime(j, h, wg)
 			a.findCorrelationAtTime(j, H[i])
+			//}
 		}
 
 		//runtime.Gosched()
@@ -185,8 +201,7 @@ func (a *Attack) FindKeyByte(H []Hyps, index int) byte {
 		a.printProgress(a.keys[i], index+1)
 	}
 
-
-	//fmt.Printf("%f\n", maxGlobalCor)
+	fmt.Printf("%f\n", a.maxGlobalCor)
 	//fmt.Printf("%d\n", keyIndex)
 
 	//for _, h := range H[0] {
@@ -216,7 +231,10 @@ func (a *Attack) findCorrelationAtTime(j int, h Hyps) {
 		hh[k] = float64(h[k])
 	}
 	//c := a.Corrolation(h, ss)
-	c := Correlation(hh, ss, nil)
+	c := Pearson(hh, ss)
+	//if c > 0.5 {
+	//fmt.Printf("%f\n", c)
+	//}
 	//if c < 0 {
 	//	//fmt.Printf("%f\n", c)
 	//	c = -c
@@ -289,6 +307,7 @@ func (a *Attack) CalculateHypotheses() [][]Hyps {
 
 		for j := 0; j < KeyGuesses; j++ {
 			for k, sample := range a.samples {
+				//fmt.Printf("%d %v\n", len(sample.m), sample.m)
 				V[i][j][k] = a.conf.SBox()[a.keys[j]^sample.m[i]]
 				//V[i][j][k] = a.conf.RoundConstant()[a.keys[j]^sample.m[i]]
 				H[i][j][k] = utils.HammingWeight(V[i][j][k])
@@ -315,11 +334,11 @@ func (a *Attack) GatherSamples() os.Error {
 
 			fmt.Printf("\rGathering Power Samples [%d]...", count)
 
-			inum := big.NewInt(int64(i))
-			//inum := utils.RandInt(2, 24)
+			//inum := big.NewInt(int64(i))
+			inum := utils.RandInt(2, 128)
 
 			//l, ss, m, err := a.Interact(rnd.Int()%255, inum.Bytes())
-			l, ss, m, err := a.Interact(j, inum.Bytes())
+			l, ss, m, err := a.Interact(inum.Bytes())
 			if err != nil {
 				return err
 			}
@@ -333,15 +352,21 @@ func (a *Attack) GatherSamples() os.Error {
 			//fmt.Printf("\n%s\n", m)
 			//fmt.Printf("%v\n", utils.HexToOct(m))
 			//os.Exit(1)
-			tmp := make([]byte, len(m))
-			kk := 0
-			for k := len(m) - 1; k >= 0; k-- {
-				tmp[kk] = m[k]
-				kk++
-			}
+			//tmp := make([]byte, len(m))
+			//kk := 0
+			//for k := len(m) - 1; k >= 0; k-- {
+			//	tmp[kk] = m[k]
+			//	kk++
+			//}
 
 			oct := make([]byte, len(m)/2)
 			hex.Decode(oct, m)
+			//foo := new(big.Int).SetBytes(oct)
+			//if len(oct) != len(foo.Bytes()) {
+			//	fmt.Printf("\n%v\n", oct)
+			//	fmt.Printf("%v\n", foo.Bytes())
+			//}
+			//os.Exit(0)
 			//fmt.Printf("\n%v\n", oct)
 			//fmt.Printf("%v\n", tmp)
 
@@ -369,8 +394,8 @@ func (a *Attack) GatherSamples() os.Error {
 	return nil
 }
 
-func (a *Attack) Interact(j int, i []byte) (l int, ss []int, m []byte, err os.Error) {
-	if err := a.Write(j, i); err != nil {
+func (a *Attack) Interact(i []byte) (l int, ss []int, m []byte, err os.Error) {
+	if err := a.Write(i); err != nil {
 		return -1, nil, nil, err
 	}
 
@@ -384,11 +409,11 @@ func (a *Attack) Interact(j int, i []byte) (l int, ss []int, m []byte, err os.Er
 	return l, ss, m, nil
 }
 
-func (a *Attack) Write(blockAddr int, sectorAddr []byte) os.Error {
+func (a *Attack) Write(sectorAddr []byte) os.Error {
 	i := make([]byte, len(sectorAddr)*2)
 	hex.Encode(i, sectorAddr)
 	i = utils.Pad(bytes.AddByte(i, '\n'), 32)
-	j := utils.AppendByte(utils.IntToBytes(blockAddr), '\n')
+	j := []byte{'0', '0', '0', '\n'}
 
 	if err := a.cmd.WriteStdin(j); err != nil {
 		return utils.Error("failed to write block adress", err)
@@ -458,6 +483,7 @@ func (a *Attack) Read() (l int, ss []int, m []byte, err os.Error) {
 					ss = utils.AppendInt(ss, tmp)
 				}
 				m = bytes.Split(p[i+1:], []byte{'\n'}, 0)[0]
+				//fmt.Printf("%v\n >%v\n", p, m)
 
 				//close(stopCh)
 				//wg.Wait()
@@ -541,7 +567,7 @@ func Correlation(x, y, weights []float64) float64 {
 func (a *Attack) printProgress(keyTry byte, i int) {
 	str := ""
 	for _, k := range a.key {
-		str += fmt.Sprintf(" %v", k)
+		str += fmt.Sprintf(" %X", k)
 	}
 
 	for i := 0; i < KeyByteLength-len(a.key); i++ {
@@ -551,4 +577,36 @@ func (a *Attack) printProgress(keyTry byte, i int) {
 	str += " "
 
 	fmt.Printf("\r(%.2d) [%s] {%.3d} corr(%.4f) ", i, str, keyTry, a.maxGlobalCor)
+}
+
+func Pearson(a, b []float64) float64 {
+
+	if len(a) != len(b) {
+		panic("len(a) != len(b)")
+	}
+
+	var abar, bbar float64
+	var n int
+	for i := range a {
+		if !math.IsNaN(a[i]) && !math.IsNaN(b[i]) {
+			abar += a[i]
+			bbar += b[i]
+			n++
+		}
+	}
+	nf := float64(n)
+	abar, bbar = abar/nf, bbar/nf
+
+	var numerator float64
+	var sumAA, sumBB float64
+
+	for i := range a {
+		if !math.IsNaN(a[i]) && !math.IsNaN(b[i]) {
+			numerator += (a[i] - abar) * (b[i] - bbar)
+			sumAA += (a[i] - abar) * (a[i] - abar)
+			sumBB += (b[i] - bbar) * (b[i] - bbar)
+		}
+	}
+
+	return numerator / (math.Sqrt(sumAA) * math.Sqrt(sumBB))
 }

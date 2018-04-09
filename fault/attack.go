@@ -137,21 +137,21 @@ func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, err os.Error) {
 	}
 
 	for i := 0; i < WORD_LENGTH; i++ {
-		var d_mult []byte
+		var d_m []byte
 		if utils.Contains([]int{0, 2, 9, 11}, i) {
-			d_mult = a.conf.Delta2()
+			d_m = a.conf.Delta2()
 		} else if utils.Contains([]int{5, 7, 12, 14}, i) {
-			d_mult = a.conf.Delta3()
+			d_m = a.conf.Delta3()
 		} else if utils.Contains([]int{1, 3, 4, 6, 8, 10, 13, 15}, i) {
-			d_mult = a.conf.Delta1()
+			d_m = a.conf.Delta1()
 		}
 
 		for k := 0; k < 256; k++ {
-			delt_i := a.conf.SBoxInv()[utils.XORToInt(a.c_org[i], k)]
-			delt_i ^= a.conf.SBoxInv()[utils.XORToInt(m_f[i], k)]
+			d_i := a.conf.SBoxInv()[utils.XORToInt(a.c_org[i], k)]
+			d_i ^= a.conf.SBoxInv()[utils.XORToInt(m_f[i], k)]
 
-			for j, delt := range d_mult {
-				if delt_i == delt {
+			for j, delt := range d_m {
+				if d_i == delt {
 					HV[i][j] = utils.AppendByte(HV[i][j], byte(k))
 				}
 			}
@@ -238,43 +238,43 @@ func (a *Attack) calculateNextHypothosis(hypotheses [][][]byte) ([][][]byte, os.
 		return nil, utils.Error("failed to generate current hypothesis", err)
 	}
 
-	var next_hypothesis [][][]byte
+	var nxt_hypothesis [][][]byte
 
-	for _, byte_current := range curr_hypothesis {
+	for _, byte_curr := range curr_hypothesis {
 
-		var matching_keys [][]byte
-		for _, byte_previous := range hypotheses {
-			for _, keys_current := range byte_current {
-				for _, keys_previous := range byte_previous {
+		var match_ks [][]byte
+		for _, byte_prev := range hypotheses {
+			for _, ks_curr := range byte_curr {
+				for _, ks_prev := range byte_prev {
 
-					if a.sameBytes(keys_current, keys_previous) {
-						matching_keys = utils.AppendByte2(matching_keys, keys_current)
+					if a.sameBytes(ks_curr, ks_prev) {
+						match_ks = utils.AppendByte2(match_ks, ks_curr)
 					}
 
 				}
 			}
 		}
 
-		next_hypothesis = utils.AppendByte3(next_hypothesis, matching_keys)
+		nxt_hypothesis = utils.AppendByte3(nxt_hypothesis, match_ks)
 	}
 
-	return next_hypothesis, nil
+	return nxt_hypothesis, nil
 }
 
 func (a *Attack) collectValidHypotheses(HV [][][]byte) [][][]byte {
 	hypotheses := make([][][]byte, 4)
 
-	aRange := [][]byte{[]byte{0, 13, 10, 7}, []byte{4, 1, 14, 11}, []byte{8, 5, 2, 15}, []byte{12, 9, 6, 3}}
+	rng := [][]byte{[]byte{0, 13, 10, 7}, []byte{4, 1, 14, 11}, []byte{8, 5, 2, 15}, []byte{12, 9, 6, 3}}
 
-	for cnt, bytes := range aRange {
+	for cnt, bytes := range rng {
 		for i := 0; i < KEY_RANGE; i++ {
 
 			if (len(HV[bytes[0]][i]) > 0) && (len(HV[bytes[1]][i]) > 0) && (len(HV[bytes[2]][i]) > 0) && (len(HV[bytes[3]][i]) > 0) {
-				for _, key0 := range HV[bytes[0]][i] {
-					for _, key1 := range HV[bytes[1]][i] {
-						for _, key2 := range HV[bytes[2]][i] {
-							for _, key3 := range HV[bytes[3]][i] {
-								hypotheses[cnt] = utils.AppendByte2(hypotheses[cnt], []byte{key0, key1, key2, key3})
+				for _, k0 := range HV[bytes[0]][i] {
+					for _, k1 := range HV[bytes[1]][i] {
+						for _, k2 := range HV[bytes[2]][i] {
+							for _, k3 := range HV[bytes[3]][i] {
+								hypotheses[cnt] = utils.AppendByte2(hypotheses[cnt], []byte{k0, k1, k2, k3})
 							}
 						}
 					}
