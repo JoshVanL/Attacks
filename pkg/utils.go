@@ -375,6 +375,19 @@ func MaxLen3ByteSlice(bs [][][]byte) int {
 	return l
 }
 
+func Transpose(m [][]float64) [][]float64 {
+	r := make([][]float64, len(m[0]))
+	for x, _ := range r {
+		r[x] = make([]float64, len(m))
+	}
+	for y, s := range m {
+		for x, e := range s {
+			r[x][y] = e
+		}
+	}
+	return r
+}
+
 
 // Go has a built in function append which will append arbitrary slices
 // together.  Since this is a very old version, it doesn't even have that!

@@ -28,7 +28,7 @@ const (
 	CHUNKSIZE    = 4
 	MESSAGE_SIZE = 16
 	CHUNKS       = 750
-	SAMPLES      = 20
+	SAMPLES      = 30
 	KEY_RANGE    = 256
 	KEY_SIZE     = 16
 	TRACE_NUM    = 3000
@@ -38,8 +38,8 @@ type Attack struct {
 	cmd  *command.Command
 	conf *power_c.Conf
 
-	samples   *Samples
-	corrCount int
+	samples *Samples
+	corr    float64
 
 	interactions int
 }
@@ -110,7 +110,8 @@ func (a *Attack) Run() os.Error {
 	k2 := a.FindKey()
 
 	fmt.Printf("\nAttack Complete.\n")
-	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
+	fmt.Printf("Confidence: %.2f%%\n", (a.corr/KEY_SIZE)*100)
+	fmt.Printf("Elapsed time: %.2fs\n*********\n", float64((time.Nanoseconds()-now))/1e9)
 
 	fmt.Printf("Target material: [%X]\n", k2)
 	fmt.Printf("Interactions: %d\n", a.interactions)
@@ -124,12 +125,14 @@ func (a *Attack) FindKey() []byte {
 	var max float64
 	var key byte
 
+	a.printProgress(k2, 0, 1)
+
 	for i := 0; i < KEY_SIZE; i++ {
 		a.CalculateKeyCorrelations(i)
 		max = 0
 
 		for j := 0; j < KEY_RANGE; j++ {
-			for k := 0; k < CHUNKS; k++ {
+			for k := 0; k < TRACE_NUM; k++ {
 				if a.samples.CC[j][k] > max {
 					max = a.samples.CC[j][k]
 					key = byte(j)
@@ -139,6 +142,7 @@ func (a *Attack) FindKey() []byte {
 		}
 
 		k2 = bytes.AddByte(k2, key)
+		a.corr += max
 	}
 
 	a.printProgress(k2, max, KEY_SIZE)
@@ -156,33 +160,20 @@ func (a *Attack) CalculateKeyCorrelations(b int) {
 
 	}
 
-	HHT := transpose(a.samples.HH)
-	a.samples.TT = transpose(a.samples.traces)
-	a.samples.TT = a.samples.TT[0:TRACE_NUM]
+	HHT := utils.Transpose(a.samples.HH)
+	a.samples.TT = utils.Transpose(a.samples.traces)[0:TRACE_NUM]
 
 	a.samples.CC = make([][]float64, KEY_RANGE)
 
 	for i := 0; i < KEY_RANGE; i++ {
 		a.samples.CC[i] = make([]float64, TRACE_NUM)
-		for j := 0; j < CHUNKS; j++ {
+		for j := 0; j < TRACE_NUM; j++ {
 			corr := Pearson(HHT[i], a.samples.TT[j*CHUNKSIZE : (j+1)*CHUNKSIZE][0])
 			a.samples.CC[i][j] = corr
 		}
 	}
 }
 
-func transpose(m [][]float64) [][]float64 {
-	r := make([][]float64, len(m[0]))
-	for x, _ := range r {
-		r[x] = make([]float64, len(m))
-	}
-	for y, s := range m {
-		for x, e := range s {
-			r[x][y] = e
-		}
-	}
-	return r
-}
 
 func (a *Attack) Correlation(hh []float64, tt []float64) float64 {
 	var R float64

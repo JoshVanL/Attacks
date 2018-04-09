@@ -23,7 +23,6 @@ fault: fault/attack.go
 
 power: power/attack.go
 	./build.sh pkg/utils.go pkg/file.go pkg/command.go pkg/power_c.go power/attack.go
-	./build.sh pkg/utils.go pkg/file.go pkg/command.go pkg/power_c.go power/copy.go
 
 clean:
 	rm -f oaep/attack
