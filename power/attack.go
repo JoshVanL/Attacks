@@ -13,13 +13,11 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"crypto/aes"
 	"math"
 	"time"
 	"strings"
 	"bytes"
 	"strconv"
-	"sync"
 
 	"./command"
 	"./power_c"
@@ -27,14 +25,6 @@ import (
 )
 
 const (
-	//Second    = int64(1e+9)
-	//SamplesI  = 40
-	//SamplesJ  = 1
-	//SamplesIJ = SamplesI * SamplesJ
-
-	//KeyByteLength = 16
-	//KeyGuesses    = 256
-
 	CHUNKSIZE    = 4
 	MESSAGE_SIZE = 16
 	CHUNKS       = 750
@@ -52,7 +42,6 @@ type Attack struct {
 	corrCount int
 
 	interactions int
-	mx           *sync.Mutex
 }
 
 type Samples struct {
@@ -98,7 +87,6 @@ func NewAttack() (*Attack, os.Error) {
 		cmd: cmd,
 		conf: power_c.NewConf(),
 		interactions: 0,
-		mx: new(sync.Mutex),
 	},
 		nil
 }
@@ -118,107 +106,26 @@ func (a *Attack) Run() os.Error {
 	}
 	fmt.Printf("done.\n")
 
-	fmt.Printf("Finding Key 2...\n")
-	k2 := a.FindKey2()
-
-	fmt.Printf("\nFinding Key 1...\n")
-	k1, err := a.FindKey1(k2)
-	if err != nil {
-		return utils.Error("failed to find key 1", err)
-	}
+	fmt.Printf("Finding Key...\n")
+	k2 := a.FindKey()
 
 	fmt.Printf("\nAttack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
 
 	fmt.Printf("Target material: [%X]\n", k2)
-	fmt.Printf("Target material: [%X]\n", k1)
 	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
 
-func (a *Attack) FindKey1(k2 []byte) ([]byte, os.Error) {
-	var k1 []byte
-
-	var max float64
-	var key byte
-
-	tweaks, err := a.GenerateTweaks(k2)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := 0; i < KEY_SIZE; i++ {
-		a.CalculateKey1Correlations(i, tweaks)
-		max = 0
-
-		for j := 0; j < KEY_RANGE; j++ {
-			for k := 0; k < CHUNKS; k++ {
-				if a.samples.CC[j][k] > max {
-					max = a.samples.CC[j][k]
-					key = byte(j)
-				}
-			}
-			a.printProgress(k1, max, i+1)
-		}
-
-		k1 = bytes.AddByte(k1, key)
-	}
-
-	a.printProgress(k1, max, KEY_SIZE)
-
-	return k1, nil
-}
-
-func (a *Attack) CalculateKey1Correlations(b int, tweaks [][]byte) {
-	for i, p := range a.samples.outputs {
-		p_i := p[b]
-
-		for k := 0; k < KEY_RANGE; k++ {
-			a.samples.HH[i][k] = float64(utils.HammingWeight(a.conf.SBox()[(p_i^tweaks[i][b])^byte(k)]))
-		}
-
-	}
-
-	HHT := transpose(a.samples.HH)
-	a.samples.TT = transpose(a.samples.traces)
-	a.samples.TT = a.samples.TT[len(a.samples.traces[0])-TRACE_NUM : len(a.samples.traces[0])]
-
-	a.samples.CC = make([][]float64, KEY_RANGE)
-
-	for i := 0; i < KEY_RANGE; i++ {
-		a.samples.CC[i] = make([]float64, TRACE_NUM)
-		for j := 0; j < CHUNKS; j++ {
-			corr := Pearson(HHT[i], a.samples.TT[j*CHUNKSIZE : (j+1)*CHUNKSIZE][0])
-			a.samples.CC[i][j] = corr
-		}
-	}
-}
-
-func (a *Attack) GenerateTweaks(key []byte) ([][]byte, os.Error) {
-	tweaks := make([][]byte, SAMPLES)
-
-	k, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, utils.Error("failed to create new AES cipher for tweaks", err)
-	}
-
-	for i, input := range a.samples.inputs {
-		tweaks[i] = make([]byte, MESSAGE_SIZE)
-		k.Encrypt(input, tweaks[i])
-	}
-
-	return tweaks, nil
-}
-
-func (a *Attack) FindKey2() []byte {
+func (a *Attack) FindKey() []byte {
 	var k2 []byte
 
 	var max float64
 	var key byte
 
 	for i := 0; i < KEY_SIZE; i++ {
-		a.CalculateKey2Correlations(i)
+		a.CalculateKeyCorrelations(i)
 		max = 0
 
 		for j := 0; j < KEY_RANGE; j++ {
@@ -239,7 +146,7 @@ func (a *Attack) FindKey2() []byte {
 	return k2
 }
 
-func (a *Attack) CalculateKey2Correlations(b int) {
+func (a *Attack) CalculateKeyCorrelations(b int) {
 	for i, p := range a.samples.inputs {
 		p_i := p[b]
 
