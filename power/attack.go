@@ -168,36 +168,31 @@ func (a *Attack) CalculateKeyCorrelations(b int) {
 	for i := 0; i < KEY_RANGE; i++ {
 		a.samples.CC[i] = make([]float64, TRACE_NUM)
 		for j := 0; j < TRACE_NUM; j++ {
-			corr := Pearson(HHT[i], a.samples.TT[j*CHUNKSIZE : (j+1)*CHUNKSIZE][0])
+			corr := Correlation(HHT[i], a.samples.TT[j*CHUNKSIZE : (j+1)*CHUNKSIZE][0])
 			a.samples.CC[i][j] = corr
 		}
 	}
 }
 
 
-func (a *Attack) Correlation(hh []float64, tt []float64) float64 {
-	var R float64
+func Correlation(a []float64, b []float64) float64 {
+	var aEx, bEx, AA, BB, R float64
 
-	HH := make([]float64, len(hh))
-	TT := make([]float64, len(hh))
-	EH := utils.AverageFloat(hh)
-	ET := utils.AverageFloat(tt)
-
-	for i := range hh {
-		R += (hh[i] - EH) * (tt[i] - ET)
+	for i := range a {
+		aEx += a[i]
+		bEx += b[i]
 	}
 
-	R = R / float64(len(hh))
+	aEx = aEx / float64(len(a))
+	bEx = bEx / float64(len(b))
 
-	for i := range hh {
-		HH[i] = math.Pow(hh[i]-EH, 2)
-		TT[i] = math.Pow(tt[i]-ET, 2)
+	for i := range a {
+		R += (a[i] - aEx) * (b[i] - bEx)
+		AA += (a[i] - aEx) * (a[i] - aEx)
+		BB += (b[i] - bEx) * (b[i] - bEx)
 	}
 
-	varH := utils.AverageFloat(HH)
-	varT := utils.AverageFloat(TT)
-
-	return R / math.Sqrt(varH*varT)
+	return R / (math.Sqrt(AA) * math.Sqrt(BB))
 }
 
 func (a *Attack) GatherSamples() os.Error {
@@ -350,36 +345,4 @@ func (a *Attack) printProgress(key []byte, corr float64, i int) {
 	str += " "
 
 	fmt.Printf("\r(%.2d) [%s] (%.3f)  ", i, str, corr)
-}
-
-func Pearson(a, b []float64) float64 {
-
-	if len(a) != len(b) {
-		panic("len(a) != len(b)")
-	}
-
-	var abar, bbar float64
-	var n int
-	for i := range a {
-		if !math.IsNaN(a[i]) && !math.IsNaN(b[i]) {
-			abar += a[i]
-			bbar += b[i]
-			n++
-		}
-	}
-	nf := float64(n)
-	abar, bbar = abar/nf, bbar/nf
-
-	var numerator float64
-	var sumAA, sumBB float64
-
-	for i := range a {
-		if !math.IsNaN(a[i]) && !math.IsNaN(b[i]) {
-			numerator += (a[i] - abar) * (b[i] - bbar)
-			sumAA += (a[i] - abar) * (a[i] - abar)
-			sumBB += (b[i] - bbar) * (b[i] - bbar)
-		}
-	}
-
-	return numerator / (math.Sqrt(sumAA) * math.Sqrt(sumBB))
 }
