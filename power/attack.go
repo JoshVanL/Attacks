@@ -29,8 +29,8 @@ import (
 
 const (
 	Second    = int64(1e+9)
-	SamplesI  = 255
-	SamplesJ  = 1
+	SamplesI  = 50
+	SamplesJ  = 2
 	SamplesIJ = SamplesI * SamplesJ
 
 	KeyByteLength = 16
@@ -43,10 +43,13 @@ type Attack struct {
 	cmd  *command.Command
 	conf *power_c.Conf
 
-	samples     []*Sample
-	keys        []byte
-	maxLocalCor float64
-	corrCount   int
+	samples      []*Sample
+	keys         []byte
+	maxLocalCor  float64
+	maxGlobalCor float64
+	corrCount    int
+
+	key []byte
 
 	interactions int
 	thej         int
@@ -57,8 +60,8 @@ type Sample struct {
 	l  int
 	ss []int
 	m  []byte
-	j  int
-	i  *big.Int
+	//j  int
+	//i  *big.Int
 }
 
 func main() {
@@ -121,28 +124,38 @@ func (a *Attack) Run() os.Error {
 	H := a.CalculateHypotheses()
 	fmt.Printf("done.\n")
 
+	fmt.Printf("Finding Key Bytes...\n")
 	a.FindKey(H)
 
-	fmt.Printf("Attack Complete.\n")
+	fmt.Printf("\nAttack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
+
+	//k := make(big.Int).SetBytes(a.key)
+	//k := make([]byte, len(a.key)*2)
+	//hex.Encode(k, a.key)
+
+	fmt.Printf("Target material: [%X]\n", a.key)
+	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
 }
 
 func (a *Attack) FindKey(H [][]Hyps) {
 	for i := 0; i < KeyByteLength; i++ {
-		a.FindKeyByte(H[i])
+		k := a.FindKeyByte(H[i], i)
+		a.key = bytes.AddByte(a.key, k)
+		a.printProgress(a.keys[KeyGuesses-1], i+1)
 	}
 
 }
 
-func (a *Attack) FindKeyByte(H []Hyps) byte {
-	maxGlobalCor := float64(-10000)
+func (a *Attack) FindKeyByte(H []Hyps, index int) byte {
+	a.maxGlobalCor = float64(-10000)
 	keyIndex := 0
 
 	for i := 0; i < KeyGuesses; i++ {
 
-		fmt.Printf("\rTrying Key[%d]", a.keys[i])
+		//fmt.Printf("\rTrying Key[%d]", a.keys[i])
 
 		//a.maxLocalCor = float64(-10000)
 		a.maxLocalCor = float64(0)
@@ -150,7 +163,7 @@ func (a *Attack) FindKeyByte(H []Hyps) byte {
 		//wg := utils.NewWaitGroup(3000)
 
 		a.corrCount = 0
-		for j := 0; j < a.samples[0].l/20; j++ {
+		for j := 1000; j < a.samples[0].l/40; j++ {
 			//for j := 200; j < a.samples[0].l/50; j++ {
 			//for j := a.samples[0].l - 1000; j >= a.samples[0].l-10000; j-- {
 			//for j := 0; j < 1500; j++ {
@@ -161,17 +174,20 @@ func (a *Attack) FindKeyByte(H []Hyps) byte {
 		//runtime.Gosched()
 		//go wg.Wait()
 		//wg.Wait()
-		fmt.Printf("%d ", a.corrCount)
+		//fmt.Printf("%d ", a.corrCount)
 
-		fmt.Printf("%f %d \n", a.maxLocalCor, a.thej)
-		if a.maxLocalCor > maxGlobalCor {
-			maxGlobalCor = a.maxLocalCor
+		//fmt.Printf("%f %d \n", a.maxLocalCor, a.thej)
+		if a.maxLocalCor > a.maxGlobalCor {
+			a.maxGlobalCor = a.maxLocalCor
 			keyIndex = i
 		}
+
+		a.printProgress(a.keys[i], index+1)
 	}
 
-	fmt.Printf("%f\n", maxGlobalCor)
-	fmt.Printf("%d\n", keyIndex)
+
+	//fmt.Printf("%f\n", maxGlobalCor)
+	//fmt.Printf("%d\n", keyIndex)
 
 	//for _, h := range H[0] {
 
@@ -180,7 +196,7 @@ func (a *Attack) FindKeyByte(H []Hyps) byte {
 
 	//}
 
-	return 0
+	return a.keys[keyIndex]
 }
 
 func (a *Attack) findCorrelationAtTime(j int, h Hyps) {
@@ -333,8 +349,8 @@ func (a *Attack) GatherSamples() os.Error {
 				l: l,
 				ss: ss,
 				m: oct,
-				j: j,
-				i: inum,
+				//j: j,
+				//i: inum,
 			}
 			count++
 		}
@@ -520,4 +536,19 @@ func Correlation(x, y, weights []float64) float64 {
 	syy -= ycompensation * ycompensation / sumWeights
 
 	return (sxy - xcompensation*ycompensation/sumWeights) / math.Sqrt(sxx*syy)
+}
+
+func (a *Attack) printProgress(keyTry byte, i int) {
+	str := ""
+	for _, k := range a.key {
+		str += fmt.Sprintf(" %v", k)
+	}
+
+	for i := 0; i < KeyByteLength-len(a.key); i++ {
+		str += " *"
+	}
+
+	str += " "
+
+	fmt.Printf("\r(%.2d) [%s] {%.3d} corr(%.4f) ", i, str, keyTry, a.maxGlobalCor)
 }
