@@ -29,11 +29,14 @@ import (
 const (
 	CHUNKSIZE    = 4
 	MESSAGE_SIZE = 16
-	CHUNKS       = 750
-	SAMPLES      = 30
 	KEY_RANGE    = 256
 	KEY_SIZE     = 16
-	TRACE_NUM    = 3000
+)
+
+var (
+	SAMPLES   = 15
+	TRACE_NUM = 3000
+	CHUNKS    = TRACE_NUM / CHUNKSIZE
 )
 
 type Attack struct {
@@ -102,33 +105,47 @@ func (a *Attack) Run() os.Error {
 
 	now := time.Nanoseconds()
 
-	if err := a.GatherSamples(); err != nil {
-		return utils.Error("failed to gather samples", err)
-	}
-	fmt.Printf("done.\n")
+	var found bool
+	var k1, k2 []byte
+	var err os.Error
 
-	fmt.Printf("Finding Key 2...\n")
-	k2 := a.FindKey2()
+	for !found {
 
-	fmt.Printf("\nFinding Key 1...\n")
-	k1, err := a.FindKey1(k2)
-	if err != nil {
-		return utils.Error("failed to find key 1", err)
-	}
+		if err := a.GatherSamples(); err != nil {
+			return utils.Error("failed to gather samples", err)
+		}
+		fmt.Printf("done.\n")
 
-	fmt.Printf("\nChecking Key...")
-	correct, err := a.CheckKey(k1, k2)
-	if err != nil {
-		return utils.Error("failed to check if correct key", err)
-	}
-	if !correct {
-		return utils.NewError("key was found incorrect")
+		fmt.Printf("Finding Key 2...\n")
+		k2 = a.FindKey2()
+
+		fmt.Printf("\nFinding Key 1...\n")
+		k1, err = a.FindKey1(k2)
+		if err != nil {
+			return utils.Error("failed to find key 1", err)
+		}
+
+		fmt.Printf("\nChecking Key...")
+		correct, err := a.CheckKey(k1, k2)
+		if err != nil {
+			return utils.Error("failed to check if correct key", err)
+		}
+
+		if !correct {
+			fmt.Printf("key was found incorrect.\n")
+			fmt.Printf("Increasing samples and traces.\n")
+			SAMPLES += 10
+			TRACE_NUM += 1000
+
+		} else {
+			found = true
+		}
 	}
 
 	fmt.Printf("done.\nAttack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float64((time.Nanoseconds()-now))/1e9)
 
-	fmt.Printf("Target material: K1 [%X]  K2 [%X]\n", k1, k2)
+	fmt.Printf("Target material: K1 - K2 [%X - %X]\n", k1, k2)
 	fmt.Printf("Interactions: %d\n", a.interactions)
 
 	return nil
