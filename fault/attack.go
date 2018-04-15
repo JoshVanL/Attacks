@@ -110,7 +110,7 @@ func (a *Attack) Run() os.Error {
 		return err
 	}
 	if !correct {
-		return utils.NewError("key incorrect, does not produce same texts")
+		return utils.NewError("key incorrect, does not produce same texts.")
 	}
 	fmt.Printf("done.\n")
 

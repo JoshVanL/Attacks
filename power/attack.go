@@ -10,16 +10,16 @@ package main
 
 import (
 	"big"
+	"bytes"
+	"crypto/aes"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
-	"math"
-	"crypto/aes"
-	"time"
-	"strings"
-	"bytes"
 	"strconv"
+	"strings"
+	"time"
 
 	"./command"
 	"./power_c"
@@ -34,7 +34,7 @@ const (
 )
 
 var (
-	SAMPLES   = 15
+	SAMPLES   = 20
 	TRACE_NUM = 3000
 	CHUNKS    = TRACE_NUM / CHUNKSIZE
 )
@@ -88,10 +88,10 @@ func NewAttack() (*Attack, os.Error) {
 	}
 
 	return &Attack{
-		cmd: cmd,
-		conf: power_c.NewConf(),
-		interactions: 0,
-	},
+			cmd:          cmd,
+			conf:         power_c.NewConf(),
+			interactions: 0,
+		},
 		nil
 }
 
@@ -321,7 +321,6 @@ func (a *Attack) CalculateKey2Correlations(b int) {
 	}
 }
 
-
 func Correlation(a []float64, b []float64) float64 {
 	var aEx, bEx, AA, BB, R float64
 
@@ -345,10 +344,10 @@ func Correlation(a []float64, b []float64) float64 {
 func (a *Attack) GatherSamples() os.Error {
 
 	samples := &Samples{
-		inputs: make([][]byte, SAMPLES),
-		traces: make([][]float64, SAMPLES),
+		inputs:  make([][]byte, SAMPLES),
+		traces:  make([][]float64, SAMPLES),
 		outputs: make([][]byte, SAMPLES),
-		HH: make([][]float64, SAMPLES),
+		HH:      make([][]float64, SAMPLES),
 	}
 
 	for i := 0; i < SAMPLES; i++ {
