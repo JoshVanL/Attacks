@@ -10,11 +10,12 @@ package main
 
 import (
 	"bytes"
-	"encoding/hex"
 	"crypto/aes"
-	"time"
+	"runtime"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"time"
 
 	"./command"
 	"./fault_c"
@@ -25,6 +26,10 @@ const (
 	WORD_LENGTH = 16
 	KEY_RANGE   = 256
 )
+
+
+var MULTAB [7][KEY_RANGE]int
+
 
 type Attack struct {
 	cmd *command.Command
@@ -44,6 +49,8 @@ func main() {
 		utils.Fatal(err)
 	}
 	fmt.Printf("done.\n")
+
+	runtime.GOMAXPROCS(2)
 
 	if err := a.Run(); err != nil {
 		utils.Fatal(err)
@@ -89,7 +96,7 @@ func (a *Attack) Run() os.Error {
 	a.c_org = c
 	a.m_org = m
 
-	hypotheses, err := a.GenerateHypothesis()
+	hypotheses, m_f, err := a.GenerateHypothesis()
 	if err != nil {
 		return err
 	}
@@ -114,21 +121,105 @@ func (a *Attack) Run() os.Error {
 	}
 	fmt.Printf("done.\n")
 
+	for i := 0; i < KEY_RANGE; i++ {
+		MULTAB[0][i] = mul(2, i)
+	}
+	for i := 0; i < KEY_RANGE; i++ {
+		MULTAB[1][i] = mul(3, i)
+	}
+	for i := 0; i < KEY_RANGE; i++ {
+		MULTAB[2][i] = mul(6, i)
+	}
+	for i := 0; i < KEY_RANGE; i++ {
+		MULTAB[3][i] = mul(9, i)
+	}
+	for i := 0; i < KEY_RANGE; i++ {
+		MULTAB[4][i] = mul(11, i)
+	}
+	for i := 0; i < KEY_RANGE; i++ {
+		MULTAB[5][i] = mul(13, i)
+	}
+	for i := 0; i < KEY_RANGE; i++ {
+		MULTAB[6][i] = mul(14, i)
+	}
+
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
 	fmt.Printf("Target material: [%X]\n", d)
 	fmt.Printf("Interactions: %d\n", a.interactions)
 
+	k, err := a.AttackSingleFault(hypotheses, m_f)
+	if err != nil {
+		return utils.Error("error during single fault", err)
+	}
+
+	if k != nil {
+		fmt.Printf("Key Found: [%X]\n", k)
+	} else {
+		fmt.Printf("Key not found.\n")
+	}
+
 	return nil
 }
 
+func (a *Attack) AttackSingleFault(hypotheses [][][]byte, m_f []byte) ([]byte, os.Error) {
+	inputs := make([][]byte, len(hypotheses[2])*len(hypotheses[3]))
 
-func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, err os.Error) {
+	for i1 := 0; i1 < len(hypotheses[0]); i1++ {
+		start1 := time.Nanoseconds()
+		for i2 := 0; i2 < len(hypotheses[1]); i2++ {
+			i := 0
+			for i3 := 0; i3 < len(hypotheses[2]); i3++ {
+				for i4 := 0; i4 < len(hypotheses[3]); i4++ {
+					inputs[i] = []byte{byte(i1), byte(i2), byte(i3), byte(i4)}
+					i++
+				}
+			}
+
+			wg := utils.NewWaitGroup(len(inputs))
+
+			for _, i := range inputs {
+				go func() {
+					k := a.maths(i, a.m_org, m_f, hypotheses)
+					if k != nil {
+						fmt.Printf("Potential key found: %X\n", k)
+
+						check, err := a.CheckKey(k)
+						if err != nil {
+							//return nil, utils.Error("error checking potential key", err)
+							fmt.Printf("error checking potential key: %v\n", err)
+							os.Exit(1)
+						}
+
+						if check {
+							//return k, nil
+							fmt.Printf("Key Found: [%X]\n", k)
+							os.Exit(0)
+						}
+					}
+
+					wg.Done()
+				}()
+			}
+
+			runtime.Gosched()
+			go wg.Wait()
+
+		}
+
+		fmt.Printf("Round %d / %d\n", i1+1, len(hypotheses[1]))
+		fmt.Printf("Elapsed time: %.2fs\n", float((time.Nanoseconds()-start1))/1e9)
+	}
+
+	return nil, nil
+}
+
+func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, m_f []byte, err os.Error) {
 	f := a.conf.BuildFault(8, 1, 0, 0, 0)
 
-	m_f, err := a.Interact(a.m_org, f)
+	m_f, err = a.Interact(a.m_org, f)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	HV := make([][][]byte, WORD_LENGTH)
@@ -158,8 +249,103 @@ func (a *Attack) GenerateHypothesis() (hypotheses [][][]byte, err os.Error) {
 		}
 	}
 
-	return a.collectValidHypotheses(HV), nil
+	return a.collectValidHypotheses(HV), m_f, nil
 }
+
+func (a *Attack) maths(input []byte, message []byte, m_f []byte, hypothesis [][][]byte) []byte {
+	///
+
+	i1 := input[0]
+	i2 := input[1]
+	i3 := input[2]
+	i4 := input[3]
+
+	k1 := hypothesis[0][i1][0]
+	k14 := hypothesis[0][i1][1]
+	k11 := hypothesis[0][i1][2]
+	k8 := hypothesis[0][i1][3]
+
+	k5 := hypothesis[1][i2][0]
+	k2 := hypothesis[1][i2][1]
+	k15 := hypothesis[1][i2][2]
+	k12 := hypothesis[1][i2][3]
+
+	k9 := hypothesis[2][i3][0]
+	k6 := hypothesis[2][i3][1]
+	k3 := hypothesis[2][i3][2]
+	k16 := hypothesis[2][i3][3]
+
+	k13 := hypothesis[3][i4][0]
+	k10 := hypothesis[3][i4][1]
+	k7 := hypothesis[3][i4][2]
+	k4 := hypothesis[3][i4][3]
+
+	k := []byte{0, k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12, k13, k14, k15, k16}
+
+	inv_s := a.conf.SBoxInv()
+	r_con := a.conf.RoundConstant()
+	x := make([]byte, len(message)+1)
+	xp := make([]byte, len(m_f)+1)
+	copy(x[1:], message)
+	copy(xp[1:], m_f)
+	s := a.conf.SBox()
+
+	aa := inv_s[MULTAB[6][inv_s[x[1]^k[1]]^k[1]^s[k[14]^k[10]]^r_con[10]]^
+		MULTAB[4][inv_s[x[14]^k[14]]^k[2]^s[k[15]^k[11]]]^
+		MULTAB[5][inv_s[x[11]^k[11]]^k[3]^s[k[16]^k[12]]]^
+		MULTAB[3][inv_s[x[8]^k[8]]^k[4]^s[k[13]^k[9]]]] ^ inv_s[MULTAB[6][inv_s[xp[1]^k[1]]^k[1]^s[k[14]^k[10]]^r_con[10]]^
+		MULTAB[4][inv_s[xp[14]^k[14]]^k[2]^s[k[15]^k[11]]]^
+		MULTAB[5][inv_s[xp[11]^k[11]]^k[3]^s[k[16]^k[12]]]^
+		MULTAB[3][inv_s[xp[8]^k[8]]^k[4]^s[k[13]^k[9]]]]
+
+	b := inv_s[MULTAB[3][inv_s[x[13]^k[13]]^k[13]^k[9]]^
+		MULTAB[6][inv_s[x[10]^k[10]]^k[10]^k[14]]^
+		MULTAB[4][inv_s[x[7]^k[7]]^k[15]^k[11]]^
+		MULTAB[5][inv_s[x[4]^k[4]]^k[16]^k[12]]] ^
+		inv_s[MULTAB[3][inv_s[xp[13]^k[13]]^k[13]^k[9]]^
+			MULTAB[6][inv_s[xp[10]^k[10]]^k[10]^k[14]]^
+			MULTAB[4][inv_s[xp[7]^k[7]]^k[15]^k[11]]^
+			MULTAB[5][inv_s[xp[4]^k[4]]^k[16]^k[12]]]
+
+	if aa != byte(MULTAB[0][b]) {
+		return nil
+	}
+
+	c := inv_s[MULTAB[5][inv_s[x[9]^k[9]]^k[9]^k[5]]^
+		MULTAB[3][inv_s[x[6]^k[6]]^k[10]^k[6]]^
+		MULTAB[6][inv_s[x[3]^k[3]]^k[11]^k[7]]^
+		MULTAB[4][inv_s[x[16]^k[16]]^k[12]^k[8]]] ^
+		inv_s[MULTAB[5][inv_s[xp[9]^k[9]]^k[9]^k[5]]^
+			MULTAB[3][inv_s[xp[6]^k[6]]^k[10]^k[6]]^
+			MULTAB[6][inv_s[xp[3]^k[3]]^k[11]^k[7]]^
+			MULTAB[4][inv_s[xp[16]^k[16]]^k[12]^k[8]]]
+
+	if b != c {
+		return nil
+	}
+
+	d := inv_s[MULTAB[4][inv_s[x[5]^k[5]]^k[5]^k[1]]^
+		MULTAB[5][inv_s[x[2]^k[2]]^k[6]^k[2]]^
+		MULTAB[3][inv_s[x[15]^k[15]]^k[7]^k[3]]^
+		MULTAB[6][inv_s[x[12]^k[12]]^k[8]^k[4]]] ^
+		inv_s[MULTAB[4][inv_s[xp[5]^k[5]]^k[5]^k[1]]^
+			MULTAB[5][inv_s[xp[2]^k[2]]^k[6]^k[2]]^
+			MULTAB[3][inv_s[xp[15]^k[15]]^k[7]^k[3]]^
+			MULTAB[6][inv_s[xp[12]^k[12]]^k[8]^k[4]]]
+
+	if byte(MULTAB[1][c]) != d {
+		return nil
+	}
+
+	if MULTAB[1][aa] == MULTAB[2][b] && MULTAB[2][b] == MULTAB[2][c] && MULTAB[2][c] == MULTAB[0][d] {
+		return []byte{k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12, k13, k14, k15, k16}
+	} else {
+		return nil
+	}
+
+	return nil
+}
+
 
 func (a *Attack) AttackFault(hypotheses [][][]byte) ([][][]byte, os.Error) {
 	var err os.Error
@@ -233,7 +419,7 @@ func (a *Attack) CheckKey(d []byte) (bool, os.Error) {
 }
 
 func (a *Attack) calculateNextHypothosis(hypotheses [][][]byte) ([][][]byte, os.Error) {
-	curr_hypothesis, err := a.GenerateHypothesis()
+	curr_hypothesis, _, err := a.GenerateHypothesis()
 	if err != nil {
 		return nil, utils.Error("failed to generate current hypothesis", err)
 	}
@@ -342,4 +528,20 @@ func (a *Attack) sameBytes(k1 []byte, k2 []byte) bool {
 	}
 
 	return true
+}
+
+func mul(a, b int) int {
+	result := 0
+	for i := 0; i < 8; i++ {
+		if b&1 == 1 {
+			result ^= a
+		}
+		bit := a & 0x80
+		a <<= 1
+		if bit == 0x80 {
+			a ^= 0x1b
+		}
+		b >>= 1
+	}
+	return result % 256
 }
