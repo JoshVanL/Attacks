@@ -84,8 +84,8 @@ An equivalent efficiency measure would be the number of induced faults
 needed to execute the attack. This fault attack can need as little as
 one fault induced on the system to recover the key where as side-channel
 attacks typically need a many number of acquisitions to perform their
-attack. This means therefore, one could argue that fault attacks can be
-much more efficient than other side-channel attacks.
+attack. This means therefore, that one could argue that fault attacks
+can be much more efficient than other side-channel attacks.
 
 [1] The Boomerang Attack on 5 and 6-round Reduced AES*, Katholieke
     Universiteit Leuven, 2004
