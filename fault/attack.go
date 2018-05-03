@@ -27,7 +27,20 @@ const (
 	KEY_RANGE   = 256
 )
 
-var MULTAB [7][KEY_RANGE]int
+var (
+	indexes = [][]int{
+		[]int{0, 7, 10, 13},
+		[]int{1, 4, 11, 14},
+		[]int{2, 5, 8, 15},
+		[]int{3, 6, 9, 12},
+	}
+	factors = [][]int{
+		[]int{2, 3, 1, 1},
+		[]int{1, 1, 2, 3},
+		[]int{2, 3, 1, 1},
+		[]int{1, 1, 2, 3},
+	}
+)
 
 type Attack struct {
 	cmd *command.Command
@@ -122,51 +135,107 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
 	fmt.Printf("Target material: [%X]\n", d)
-	fmt.Printf("Interactions: %d\n", a.interactions)
+	fmt.Printf("Interactions: %d\n++++++++++++++++++++++++\n", a.interactions)
+
+	now = time.Nanoseconds()
+
+	fmt.Printf("Attacking Single Fault...\n")
+	key, err = a.SinglFaultAttack(c)
+	fmt.Printf("\n")
+	if err != nil {
+		return utils.Error("error during single fault attack", err)
+	}
+
+	if key == nil {
+		return utils.NewError("failed to recover key from single fault")
+	}
+
+	fmt.Printf("Attack Complete.\n")
+	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
+	fmt.Printf("Target material: [%X]\n", key)
+	fmt.Printf("Interactions: %d\n*********\n", a.interactions)
 
 	return nil
 }
 
-func (a *Attack) MultiFaultAttack(c []byte) ([]byte, os.Error) {
-	f := a.conf.BuildFault(8, 1, 0, 0, 0)
+func (a *Attack) SinglFaultAttack(c []byte) ([]byte, os.Error) {
+	a.interactions = 1
 
+	f := a.conf.BuildFault(8, 1, 0, 0, 0)
 	c2, err := a.Interact(a.m_org, f)
 	if err != nil {
 		return nil, err
 	}
 
+	hs := make([][][]byte, 4)
+	var total, checked float64
+
+	for i, index := range indexes {
+		hs[i] = a.gatherHypotheses(c, c2, factors[i], index)
+		if total == 0 {
+			total = float64(len(hs[i]))
+		} else {
+			total *= float64(len(hs[i]))
+		}
+	}
+
+	fmt.Printf("Possible Keys: [%.0f]\n", total)
+	fmt.Printf("Progress: %.3f%", checked/total)
+
+	key := make([]byte, WORD_LENGTH)
+	for _, k1 := range hs[0] {
+		for _, k2 := range hs[1] {
+			for _, k3 := range hs[2] {
+				for _, k4 := range hs[3] {
+
+					key = []byte{k1[0], k2[0], k3[0], k4[0],
+						k2[1], k3[1], k4[1], k1[1],
+						k3[2], k4[2], k1[2], k2[2],
+						k4[3], k1[3], k2[3], k3[3],
+					}
+
+					b, err := a.CheckKey(key)
+					if err != nil {
+						return nil, err
+					}
+
+					if b {
+						return key, nil
+					}
+
+					checked++
+					fmt.Printf("\rProgress: %.3f%", checked/total)
+				}
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+func (a *Attack) MultiFaultAttack(c []byte) ([]byte, os.Error) {
+	f := a.conf.BuildFault(8, 1, 0, 0, 0)
+	c2, err := a.Interact(a.m_org, f)
+	if err != nil {
+		return nil, err
+	}
 	c3, err := a.Interact(a.m_org, f)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("\n")
-
 	key := make([]byte, WORD_LENGTH)
 
-	factors := [][]int{
-		[]int{2, 3, 1, 1},
-		[]int{1, 1, 2, 3},
-		[]int{2, 3, 1, 1},
-		[]int{1, 1, 2, 3},
-	}
-
-	for i, indexes := range [][]int{
-		[]int{0, 7, 10, 13},
-		[]int{1, 4, 11, 14},
-		[]int{2, 5, 8, 15},
-		[]int{3, 6, 9, 12},
-	} {
-
-		hs1 := a.gatherHypotheses(c, c2, factors[i], indexes)
-		hs2 := a.gatherHypotheses(c, c3, factors[i], indexes)
+	for i, index := range indexes {
+		hs1 := a.gatherHypotheses(c, c2, factors[i], index)
+		hs2 := a.gatherHypotheses(c, c3, factors[i], index)
 
 	LOOP:
 		for _, h1 := range hs1 {
 			for _, h2 := range hs2 {
 				if a.sameBytes(h1, h2) {
 					for j := range h1 {
-						key[indexes[j]] = h1[j]
+						key[index[j]] = h1[j]
 					}
 					break LOOP
 				}
@@ -177,7 +246,7 @@ func (a *Attack) MultiFaultAttack(c []byte) ([]byte, os.Error) {
 	return key, nil
 }
 
-func (a *Attack) gatherHypotheses(x, xp []byte, factor, index []int) [][]byte {
+func (a *Attack) gatherHypotheses(c, c2 []byte, factor, index []int) [][]byte {
 	var hypotheses [][]byte
 
 	for i := 0; i < KEY_RANGE; i++ {
@@ -185,7 +254,7 @@ func (a *Attack) gatherHypotheses(x, xp []byte, factor, index []int) [][]byte {
 
 		for j := 0; j < KEY_RANGE; j++ {
 			for k := 0; k < 4; k++ {
-				if a.table[factor[k]][i] == a.conf.SBoxInv()[x[index[k]]^byte(j)]^a.conf.SBoxInv()[xp[index[k]]^byte(j)] {
+				if a.table[factor[k]][i] == a.conf.SBoxInv()[c[index[k]]^byte(j)]^a.conf.SBoxInv()[c2[index[k]]^byte(j)] {
 					ks[k] = utils.AppendByte(ks[k], byte(j))
 				}
 			}
@@ -305,21 +374,13 @@ func (a *Attack) sameBytes(k1 []byte, k2 []byte) bool {
 func BuildTable() [][]byte {
 	table := make([][]byte, 4)
 
-	wg := utils.NewWaitGroup(3)
-
 	for i := 1; i < 4; i++ {
 
-		go func(i int) {
-			table[i] = make([]byte, KEY_RANGE)
-			for j := 0; j < KEY_RANGE; j++ {
-				table[i][j] = gf28(byte(i), byte(j))
-			}
-			wg.Done()
-		}(i)
+		table[i] = make([]byte, KEY_RANGE)
+		for j := 0; j < KEY_RANGE; j++ {
+			table[i][j] = gf28(byte(i), byte(j))
+		}
 	}
-
-	runtime.Gosched()
-	go wg.Wait()
 
 	return table
 }
