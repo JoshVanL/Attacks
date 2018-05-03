@@ -1,0 +1,152 @@
+-------------------------------------------------------------------------------
+
+1. Instructions
+
+- replace any [...] with free text,
+  and
+- replace the [?] with an X if you have completed that stage,
+- replace the [?] with an * if you have attempted that stage, but you know
+  it doesn't work completely; document why you think it doesn't work, plus
+  what you would do to fix the problem, at the end of the marksheet.
+
+-------------------------------------------------------------------------------
+
+2. Information
+
+So that we can calibrate and improve the assignment in the future, give us
+a rough idea how long (in hours) you spent on it *in total*:
+
+effort : stage 1 -> [22] hours
+effort : stage 2 -> [22] hours
+effort : stage 3 -> [20] hours
+effort : stage 4 -> [25] hours
+
+-------------------------------------------------------------------------------
+
+3. Citation
+
+Clearly it might have an influence on your mark, but the use of third-party
+resources *is* allowed *if* correctly cited (unless explicitly prohibited 
+by the assignment description of course).  Let us know what third-party 
+source code or resources you used (if any) so it's clear what's your work 
+and what isn't:
+
+[
+
+[1] Differential Fault Analysis of the Advanced Encryption Standard using a
+    Single Fault
+    * Michael Tunstall, Debdeep Mukhopadhyay , and Subidh Ali
+    & Department of Computer Science, University of Bristol,
+      Computer Sc. and Engg, IIT Kharagpur, India.
+    > https://eprint.iacr.org/2009/575.pdf
+
+[2] Advanced Encryption Standard
+    > https://en.wikipedia.org/wiki/Advanced_Encryption_Standard
+
+[3] DPA on AES (8)
+    > https://www.ole.bris.ac.uk/bbcswebdav/courses/COMS30901_2017/csmeo/8-appliedsec-AES.pdf
+
+[4] Exploiting the Physical Disparity:
+    Side-Channel Attacks on Memory Encryption
+    * Thomas Unterluggauer, Stefan Mangard
+    & Graz University of Technology
+    > https://eprint.iacr.org/2016/473.pdf
+
+[5] Go Standard Library 1.10
+    * Google LLC. And Contributors
+    = February 2018
+    > https://golang.org/pkg/
+
+]
+
+-------------------------------------------------------------------------------
+
+4. Marking
+
+The following gives a stage-by-stage description of the assignment marking
+scheme.  Note this acts as an indicative guideline only, including weights
+for each more obvious aspect (e.g., functional correctness); other aspects
+outside this list can warrant an increase/decrease in marks, with examples
+including hard to quantify features such as the efficiency, robustness, 
+generality, realism, or style of a solution.
+
+[X] Stage 1 : an attack based on error messages
+              - correct challenge material                           ( 40%)
+              - solution quality wrt. efficiency, robustness etc.    ( 30%)
+              - analysis questions                                   ( 30%)
+
+              challenge material (i.e., plaintext  m^{*}) : [B6562D3E8846C371DF369269A88ACF6E2A4692DD3CF8B9B1ECE4]
+
+[X] Stage 2 : an attack based on execution time
+              - correct challenge material                           ( 40%)
+              - solution quality wrt. efficiency, robustness etc.    ( 30%)
+              - analysis questions                                   ( 30%)
+
+              challenge material (i.e., exponent   d^{*}) : [92319C502A2F137]
+
+[X] Stage 3 : an attack based on an injected fault
+              - correct challenge material                           ( 40%)
+              - solution quality wrt. efficiency, robustness etc.    ( 30%)
+              - analysis questions                                   ( 30%)
+
+              challenge material (i.e., cipher key k^{*}) : [8EAE0428499D20E7CB4209674CDB301F]
+
+[X] Stage 4 : an attack based on power consumption
+              - correct challenge material                           ( 40%)
+              - solution quality wrt. efficiency, robustness etc.    ( 30%)
+              - analysis questions                                   ( 30%)
+
+              challenge material (i.e., cipher key k^{*}) :K1 - K2 [B9079A79BFDB41928C9AB09F057CD416 - C4FDFA2D65B25F951451BA96F606476B]
+
+                                                                     ------
+                                                                     (400%)
+
+-------------------------------------------------------------------------------
+
+5. Documentation
+
+Any other documentation, notes or comments that you think are important or
+might be easy to overlook (e.g., a subtle issue or technique in associated
+source code) should go here:
+
+[
+
+The version of Go on the lab computers and equivalent is quite dated (2009, pre
+1.0) and as such many common standard library functions and types are not
+present. This has been mostly taken care of by implementing equivalents in
+utils.go. The compiler is also still split into separate modules meaning
+compiling multi package programs must be done manually. I have written a build
+script `build.sh` which takes several go files, compiling each import file
+individually with `6g`, then finally the main package by linking them together
+with `6l` to create a final executable. Full compilation of both attacks can be
+achieved with:
+
+    `$ make all`
+
+Both attack executables will be built to ./oaep/attack and ./time/attack
+respectively.
+
+The Go package file structure of both attacks are as follows:
+
+    ./fault/attack.go ---- main fault attack execution functions.
+    ./power/attack.go ---- main power attack execution functions.
+    ./pkg/time_c.go ----- helper functions for time config.
+         /power_c.go ----- helper functions for power config.
+         /command.go ---- wrapper for executing programs and writing/reading
+                          from stdin/out.
+         /file.go ------- helper functions reading config files.
+         /utils.go ------ a collection of utility functions for memory
+                          management, bit and number manipulation. Mostly
+                          needed since version of installed Go is old.
+
+
+
+For the fault attack, I was unable to complete stage 2 by reducing the possible
+keys as detailed here (3.3 The Second Step of the Fault Attack)[2]. Instead,
+the attack will first use the multi fault attack then attempt a single fault
+attack by cycling through all possible keys of the non reduced set. This is
+obviously bad and will never recover the key in any reasonable amount time.
+
+]
+
+-------------------------------------------------------------------------------

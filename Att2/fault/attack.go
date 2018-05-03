@@ -135,7 +135,6 @@ func (a *Attack) Run() os.Error {
 	fmt.Printf("Attack Complete.\n")
 	fmt.Printf("Elapsed time: %.2fs\n*********\n", float((time.Nanoseconds()-now))/1e9)
 	fmt.Printf("Target material: [%X]\n", d)
-	fmt.Printf("Target material: [%v]\n", d)
 	fmt.Printf("Interactions: %d\n++++++++++++++++++++++++\n", a.interactions)
 
 	now = time.Nanoseconds()
@@ -276,7 +275,6 @@ func (a *Attack) gatherHypotheses(c, c2 []byte, factor, index []int) [][]byte {
 }
 
 func (a *Attack) InverseKey(ik []byte) []byte {
-	fmt.Printf("%v\n", ik)
 	for i := 10; i > 0; i-- {
 		tmp := make([]byte, 12)
 		for j := 0; j < 12; j++ {
@@ -374,9 +372,9 @@ func (a *Attack) sameBytes(k1 []byte, k2 []byte) bool {
 }
 
 func BuildTable() [][]byte {
-	table := make([][]byte, 16)
+	table := make([][]byte, 4)
 
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 4; i++ {
 
 		table[i] = make([]byte, KEY_RANGE)
 		for j := 0; j < KEY_RANGE; j++ {

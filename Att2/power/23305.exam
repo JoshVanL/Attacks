@@ -1,0 +1,93 @@
+Q.1 As a security consultant, you have been working on a prototype of the
+    attack target; before the product is deployed, the vendor is willing to
+    make any alteration necessary (in software or hardware) to prevent the
+    attack.  Explain the options available, and which one you would
+    recommend.
+
+One method of countering a differential power analysis attack is to
+introduce masking to the AES operation. The goal of masking is to remove
+the relationship of the power trace of the machine with the intermediate
+values being used. This involves using a transformation on the
+intermediate values by means of some operation such as a random value
+being applied with the XOR operator or some arithmetic operation that
+can be later revered with the inverse of this random value. This means
+an attacker is unable to correlate the underlying intermediate values
+with the power traces as they are obfuscated by this masking.
+This method does however require a larger amount of computation on the
+hardware to implement the masking operations and thus a higher latency.
+
+Hiding is a method which involves manipulating the power trace of the
+encryption or decryption process in order to reduce the correlation of the
+intermediate values and the power traces. One method is to introduce
+hardware that draws power but has no effect on the intermediate value
+results. This can be done by either aiming to make the power
+consumption constant or alternately, randomizing the power consumption
+which will reduce an attackers ability to correlate power traces and
+intermediate values. This will not effect the latency of the process
+however does require additional hardware implementation that may be
+deemed expensive in practice.
+Other methods include adding random NOP, or no operations during
+computation that aim to randomise the time for computation making the
+correlation of power traces more difficult as intermediate values are
+processed at different times with respect to one another. This can be
+implemented in software or hardware however will greatly increase the
+latency of the cryptographic process.
+
+I would recommend a masking as this method would give a significant
+reduction in an attacker's ability to correlate power traces and
+intermediate values why not requiring major hardware modifications.
+
+==========================================================================
+Q.2 The vendor of the attack target opts to replace the 8-bit Intel 8051
+    micro-processor with a modern, 32-bit ARM Cortex-M0; they supplement it
+    with hardware support for that allows single-cycle operations on 32
+    bits of the AES state.  Doing so will naturally reduce the latency of
+    encryption or decryption, but they *also* want to know if it might make
+    the device more secure wrt.  DPA attacks: what is your assessment, and
+    why ?
+
+Increasing the bit capacity of calculations performed at the same time
+from 8 to 32 significantly increases the security against DPA attacks.
+This is due to the fact that by having a greater number of values
+calculated at once, the representational power consumption at any one
+time is larger and so the search space of possible values of a given
+power trace is higher. In other words, an attacker has a much larger
+search space when determining the values at a given trace and makes it
+much more difficult to determine the correlation of given traces. This
+means that executing a DPA attack requires a much larger amount of
+traces from the hardware as well as having a more sophisticated
+correlation function.
+
+
+===========================================================================
+Q.5 DPA attacks rely on a leakage model; for an Intel 8051, one might
+    consider Hamming weight or Hamming distance models for example.
+    Explain and justify the choice of model you used (e.g., explain why/how
+    the attack target might leak information in this way).
+
+The model I used to determine correlation was the Hamming wight of the
+power traces. This model involves summing the number of 1 bits in each
+value producing the Hamming weight. This method is effective since there
+was no assumption that the system implemented any kind of masking or
+hiding which meant that the intermediate values that were being using
+during the process where not altered. By reasoning that a higher number
+1's in a value represents a higher power consumption, the Hamming weight
+can therefore be used to correlate hypotheses values with the power
+trace samples results.
+
+
+===========================================================================
+Q.8 The vendor of the attack target decides to use AES-192 rather than
+    AES-128; their argument is that longer keys will naturally improve
+    security in general *and* vs.  DPA attacks.  Explain if and why you
+    agree or disagree with this argument.
+
+Yes, this will strictly increase the security of the system however this
+is only minor. Whilst this does increase security for other attacks and
+significantly reduces any possibility for a brute force attack, the
+current DPA attack is still completely feasible. Whilst the power traces
+required as well as the time taken for the attack will increase, the
+attack as a whole will still be complete in a reasonable amount of time.
+Yes the security in general has increased however, the system is still
+susceptible to DPA attacks so other options should be considered in
+order to prevent this attack from being possible.
