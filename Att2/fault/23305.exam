@@ -1,3 +1,11 @@
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
+
 Q.1 Consider that instead of influencing data (e.g., the AES state), a
     fault might influence control-flow (e.g., a conditional statement)
     somehow during execution.  Stating any assumptions you make, give an

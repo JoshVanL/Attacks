@@ -27,16 +27,15 @@ import (
 )
 
 const (
-	CHUNKSIZE    = 4
-	MESSAGE_SIZE = 16
-	KEY_RANGE    = 256
-	KEY_SIZE     = 16
+	GROUPSIZE = 4
+	KEY_SIZE  = 16
+	KEY_RANGE = 256
 )
 
 var (
 	SAMPLES   = 20
 	TRACE_NUM = 3000
-	CHUNKS    = TRACE_NUM / CHUNKSIZE
+	GROUPS    = TRACE_NUM / GROUPSIZE
 )
 
 type Attack struct {
@@ -95,6 +94,7 @@ func NewAttack() (*Attack, os.Error) {
 		nil
 }
 
+// main attack function
 func (a *Attack) Run() os.Error {
 	fmt.Printf("Executing Attack.\n")
 
@@ -151,6 +151,7 @@ func (a *Attack) Run() os.Error {
 	return nil
 }
 
+// check key
 func (a *Attack) CheckKey(k1, k2 []byte) (bool, os.Error) {
 	i := big.NewInt(50777216)
 
@@ -164,11 +165,11 @@ func (a *Attack) CheckKey(k1, k2 []byte) (bool, os.Error) {
 		return false, utils.Error("failed to create new AES cipher for k2", err)
 	}
 
-	addr := make([]byte, MESSAGE_SIZE)
-	copy(addr[MESSAGE_SIZE-len(i.Bytes()):], i.Bytes())
+	addr := make([]byte, KEY_SIZE)
+	copy(addr[KEY_SIZE-len(i.Bytes()):], i.Bytes())
 
-	output1 := make([]byte, MESSAGE_SIZE)
-	output2 := make([]byte, MESSAGE_SIZE)
+	output1 := make([]byte, KEY_SIZE)
+	output2 := make([]byte, KEY_SIZE)
 	aesK.Encrypt(addr, output1)
 
 	aesK, err = aes.NewCipher(k1)
@@ -183,7 +184,7 @@ func (a *Attack) CheckKey(k1, k2 []byte) (bool, os.Error) {
 
 	output2 = utils.XOR(output1, output2)
 
-	m_oct := make([]byte, MESSAGE_SIZE)
+	m_oct := make([]byte, KEY_SIZE)
 	hex.Decode(m_oct, m)
 
 	if !bytes.Equal(m_oct, output2) {
@@ -209,7 +210,7 @@ func (a *Attack) FindKey1(k2 []byte) ([]byte, os.Error) {
 		max = 0
 
 		for j := 0; j < KEY_RANGE; j++ {
-			for k := 0; k < CHUNKS; k++ {
+			for k := 0; k < GROUPS; k++ {
 				if a.samples.CC[j][k] > max {
 					max = a.samples.CC[j][k]
 					key = byte(j)
@@ -244,8 +245,8 @@ func (a *Attack) CalculateKey1Correlations(b int, tweaks [][]byte) {
 
 	for i := 0; i < KEY_RANGE; i++ {
 		a.samples.CC[i] = make([]float64, TRACE_NUM)
-		for j := 0; j < CHUNKS; j++ {
-			corr := Correlation(HHT[i], a.samples.TT[j*CHUNKSIZE : (j+1)*CHUNKSIZE][0])
+		for j := 0; j < GROUPS; j++ {
+			corr := Correlation(HHT[i], a.samples.TT[j*GROUPSIZE : (j+1)*GROUPSIZE][0])
 			a.samples.CC[i][j] = corr
 		}
 	}
@@ -260,7 +261,7 @@ func (a *Attack) GenerateTweaks(key []byte) ([][]byte, os.Error) {
 	}
 
 	for i, input := range a.samples.inputs {
-		tweaks[i] = make([]byte, MESSAGE_SIZE)
+		tweaks[i] = make([]byte, KEY_SIZE)
 		k.Encrypt(input, tweaks[i])
 	}
 
@@ -315,7 +316,7 @@ func (a *Attack) CalculateKey2Correlations(b int) {
 	for i := 0; i < KEY_RANGE; i++ {
 		a.samples.CC[i] = make([]float64, TRACE_NUM)
 		for j := 0; j < TRACE_NUM; j++ {
-			corr := Correlation(HHT[i], a.samples.TT[j*CHUNKSIZE : (j+1)*CHUNKSIZE][0])
+			corr := Correlation(HHT[i], a.samples.TT[j*GROUPSIZE : (j+1)*GROUPSIZE][0])
 			a.samples.CC[i][j] = corr
 		}
 	}
@@ -373,12 +374,12 @@ func (a *Attack) GatherSamples() os.Error {
 		}
 
 		oct := make([]byte, len(m)/2)
-		samples.inputs[i] = make([]byte, MESSAGE_SIZE)
+		samples.inputs[i] = make([]byte, KEY_SIZE)
 		hex.Decode(oct, m)
 
 		samples.outputs[i] = oct
 		samples.traces[i] = ss
-		copy(samples.inputs[i][MESSAGE_SIZE-len(j.Bytes()):], j.Bytes())
+		copy(samples.inputs[i][KEY_SIZE-len(j.Bytes()):], j.Bytes())
 	}
 
 	fmt.Printf("\rGathering Power Samples [%d]...", SAMPLES)
